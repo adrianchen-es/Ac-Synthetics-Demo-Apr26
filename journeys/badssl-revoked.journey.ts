@@ -77,7 +77,7 @@ journey('badssl.com Revoked Certificate – Browser + TLS Hash', ({ page }) => {
     expect(cert.sha256).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
 
     // Log chain trust status as a JSON block.
-    console.log(JSON.stringify({
+    console.log(`TLS_TRUST` + JSON.stringify({
       trust: {
         chain_valid: trusted,
       },
@@ -85,7 +85,7 @@ journey('badssl.com Revoked Certificate – Browser + TLS Hash', ({ page }) => {
 
     // Log CRL revocation status as a JSON block.
     // LE discontinued OCSP in mid-2025; revocation is detected via CRL.
-    console.log(JSON.stringify({
+    console.log(`TLS_REVOCATION` + JSON.stringify({
       revocation: {
         status: revocationStatus,
         method: 'crl',
