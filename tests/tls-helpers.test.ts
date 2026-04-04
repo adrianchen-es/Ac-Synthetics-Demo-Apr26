@@ -108,15 +108,19 @@ test('computeFingerprint: same buffer always produces same digest', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Integration: colonSeparated(computeFingerprint(...)) produces valid format
 // ─────────────────────────────────────────────────────────────────────────────
-
-test('colonSeparated(computeFingerprint(...)): valid SHA-1 fingerprint format', () => {
-  const der = Buffer.from('fake-cert-der');
-  const fp = colonSeparated(computeFingerprint(der, 'sha1'));
-  assert.match(fp, /^([0-9A-F]{2}:){19}[0-9A-F]{2}$/, 'SHA-1 fingerprint format should match');
-});
+// NOTE: In production code, fetchCertInfo() reads cert.fingerprint256 directly
+// from the TLS handshake — no extra hashing step.  computeFingerprint is still
+// available for cases where you have a raw DER buffer and need a specific hash.
 
 test('colonSeparated(computeFingerprint(...)): valid SHA-256 fingerprint format', () => {
   const der = Buffer.from('fake-cert-der');
   const fp = colonSeparated(computeFingerprint(der, 'sha256'));
   assert.match(fp, /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/, 'SHA-256 fingerprint format should match');
+});
+
+test('colonSeparated(computeFingerprint(...)): SHA-1 optional – still produces valid format when used', () => {
+  const der = Buffer.from('fake-cert-der');
+  // SHA-1 is optional in CertInfo; this tests the utility function directly.
+  const fp = colonSeparated(computeFingerprint(der, 'sha1'));
+  assert.match(fp, /^([0-9A-F]{2}:){19}[0-9A-F]{2}$/, 'SHA-1 fingerprint format should match when computed');
 });

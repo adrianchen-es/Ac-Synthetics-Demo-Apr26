@@ -65,8 +65,7 @@ journey('Self-Signed / Internal CA – TLS Extraction', ({ page: _page }) => {
     const cert = await fetchCertInfo(TARGET_HOST, TARGET_PORT);
     logCertInfo(TARGET_HOST, TARGET_PORT, cert);
 
-    // Fingerprint format assertions.
-    expect(cert.sha1).toMatch(/^([0-9A-F]{2}:){19}[0-9A-F]{2}$/);
+    // Fingerprint format assertions — SHA-256 is the primary fingerprint.
     expect(cert.sha256).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
 
     console.log(

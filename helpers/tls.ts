@@ -4,8 +4,24 @@
  * All functions use the Node.js built-in `tls` and `crypto` modules — no
  * browser is launched, keeping overhead to a minimum.
  *
- * Design note on `rejectUnauthorized: false`
- * ─────────────────────────────────────────────
+ * ## Fingerprint extraction – efficiency note
+ *
+ * The primary fingerprint method is `cert.fingerprint256`, which is exposed
+ * directly on the `PeerCertificate` object returned by
+ * `socket.getPeerCertificate()`.  OpenSSL computes the SHA-256 (and SHA-1)
+ * digest of the DER-encoded certificate as part of the TLS handshake itself,
+ * so reading these properties costs nothing beyond the handshake that was
+ * already required.  The previous approach of extracting `cert.raw` and
+ * calling `crypto.createHash('sha256').update(raw).digest()` produced an
+ * identical result but wasted CPU cycles on a hash that OpenSSL had already
+ * computed.
+ *
+ * SHA-1 (`cert.fingerprint`) is exposed as the optional `sha1` field on
+ * `CertInfo`.  It is populated when available but should not be used as a
+ * sole trust anchor — prefer SHA-256 for all security-sensitive comparisons.
+ *
+ * ## Design note on `rejectUnauthorized: false`
+ *
  * Several helpers deliberately pass `rejectUnauthorized: false` so that we
  * can always extract certificate data (fingerprints, expiry, subject) even
  * for self-signed, revoked, or expired certificates.  The socket is
@@ -21,10 +37,19 @@ import * as crypto from 'crypto';
 
 /** Structured certificate information returned by `fetchCertInfo`. */
 export interface CertInfo {
-  /** SHA-1 fingerprint, colon-separated (e.g. "AA:BB:…:FF") */
-  sha1: string;
-  /** SHA-256 fingerprint, colon-separated */
+  /**
+   * SHA-256 fingerprint in colon-separated form (e.g. "AA:BB:…:FF").
+   *
+   * Sourced directly from `cert.fingerprint256` — no extra hashing step.
+   */
   sha256: string;
+  /**
+   * SHA-1 fingerprint in colon-separated form.
+   *
+   * Optional: SHA-1 is weak for trust decisions; prefer `sha256`.
+   * Sourced from `cert.fingerprint` when available.
+   */
+  sha1?: string;
   /** Common Name (or Organisation) of the leaf certificate subject */
   subject: string;
   /** Common Name (or Organisation) of the issuing CA */
@@ -57,6 +82,11 @@ export interface TlsFetchOptions {
  * The socket is destroyed immediately after the certificate is obtained.
  * `rejectUnauthorized` is intentionally `false` so we can always retrieve
  * the certificate regardless of its validity state.
+ *
+ * Use this function only when you specifically need the raw DER bytes (e.g.
+ * to pass to `computeFingerprint` with a non-standard algorithm).  For
+ * standard fingerprint extraction prefer `fetchCertInfo`, which reads the
+ * pre-computed `fingerprint256` property without an extra hashing step.
  */
 export function fetchLeafCertDer(
   host: string,
@@ -66,7 +96,7 @@ export function fetchLeafCertDer(
   const { ca, timeoutMs = 10_000 } = options;
 
   return new Promise((resolve, reject) => {
-    const socket = tls.connect( // lgtm[js/disabling-certificate-validation]
+    const socket = tls.connect(
       {
         host,
         port,
@@ -107,6 +137,11 @@ export function fetchLeafCertDer(
  * Always succeeds at extracting the data (uses `rejectUnauthorized: false`
  * internally).  Call `checkCertTrusted()` separately if you need to know
  * whether the certificate is trusted by the system / a custom CA.
+ *
+ * **Efficiency**: SHA-256 is read from `cert.fingerprint256`, a property that
+ * Node.js/OpenSSL populates during the TLS handshake at no extra cost.  The
+ * DER buffer (`cert.raw`) is not extracted, so no additional `crypto.createHash`
+ * call is made.
  */
 export async function fetchCertInfo(
   host: string,
@@ -131,16 +166,17 @@ export async function fetchCertInfo(
         const cert = socket.getPeerCertificate(false);
         socket.destroy();
 
-        if (!cert || !cert.raw) {
+        if (!cert || !cert.fingerprint256) {
           reject(new Error(`No certificate from ${host}:${port}`));
           return;
         }
 
-        const der = cert.raw;
-
         resolve({
-          sha1: colonSeparated(computeFingerprint(der, 'sha1')),
-          sha256: colonSeparated(computeFingerprint(der, 'sha256')),
+          // fingerprint256 is pre-computed by OpenSSL during the handshake —
+          // no extra hashing step needed.  It is already in "AA:BB:…" form.
+          sha256: cert.fingerprint256.toUpperCase(),
+          // SHA-1 is optional: present but not recommended for trust decisions.
+          sha1: cert.fingerprint ? cert.fingerprint.toUpperCase() : undefined,
           subject: (cert.subject as Record<string, string> | undefined)?.['CN']
             ?? (cert.subject as Record<string, string> | undefined)?.['O']
             ?? 'Unknown',
@@ -214,6 +250,11 @@ export function checkCertTrusted(
 /**
  * Compute a hex fingerprint of a DER-encoded certificate buffer.
  * The result is upper-cased hex with no separators.
+ *
+ * Prefer `fetchCertInfo()` for standard SHA-256 extraction — it reads the
+ * pre-computed `fingerprint256` from the TLS handshake rather than running
+ * an additional hash.  Use this function only when you need to hash a raw
+ * DER buffer that you already have (e.g. from `fetchLeafCertDer`).
  */
 export function computeFingerprint(
   derBuffer: Buffer,
@@ -242,6 +283,8 @@ export function logCertInfo(host: string, port: number, cert: CertInfo): void {
   console.log(`  Subject  : ${cert.subject}`);
   console.log(`  Issuer   : ${cert.issuer}`);
   console.log(`  Valid    : ${cert.validFrom.toISOString()} → ${cert.validTo.toISOString()}`);
-  console.log(`  SHA-1    : ${cert.sha1}`);
+  if (cert.sha1) {
+    console.log(`  SHA-1    : ${cert.sha1}`);
+  }
   console.log(`  SHA-256  : ${cert.sha256}`);
 }

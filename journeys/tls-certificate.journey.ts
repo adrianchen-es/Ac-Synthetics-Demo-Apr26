@@ -1,10 +1,15 @@
 /**
  * TLS-Only Certificate Hash Journey
  *
- * Extracts the SHA-1 and SHA-256 fingerprints of a remote server's TLS
- * certificate and verifies the certificate has not expired.  Uses the Node.js
- * built-in `tls` module — no browser is launched, keeping execution time and
- * resource usage to an absolute minimum.
+ * Extracts the SHA-256 fingerprint of a remote server's TLS certificate and
+ * verifies the certificate has not expired.  Uses the Node.js built-in `tls`
+ * module — no browser is launched, keeping execution time and resource usage
+ * to an absolute minimum.
+ *
+ * The SHA-256 fingerprint is read from `cert.fingerprint256`, which is
+ * pre-computed by OpenSSL during the TLS handshake at no extra cost.  SHA-1
+ * is also available as an optional field but should not be used as a trust
+ * anchor.
  *
  * Environment variables
  * ─────────────────────
@@ -32,9 +37,8 @@ journey('TLS Certificate Hash – Generic Host', ({ page: _page, params }) => {
 
     logCertInfo(host, port, cert);
 
-    // Assert well-formed SHA-1 (20 bytes → 20 colon-separated pairs).
-    expect(cert.sha1).toMatch(/^([0-9A-F]{2}:){19}[0-9A-F]{2}$/);
     // Assert well-formed SHA-256 (32 bytes → 32 colon-separated pairs).
+    // SHA-256 is the primary fingerprint; it is pre-computed by OpenSSL.
     expect(cert.sha256).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
   });
 
