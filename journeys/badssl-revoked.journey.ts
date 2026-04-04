@@ -15,6 +15,8 @@
  *     that revocation and other certificate errors do not prevent navigation —
  *     this mirrors real-world monitoring of hosts with known cert issues.
  *   • The TLS hash extraction always works (rejectUnauthorized: false).
+ *   • Note: Let's Encrypt discontinued OCSP in mid-2025.  Revocation is
+ *     detected via CRL (Certificate Revocation List) instead.
  *
  * Journey steps
  * ─────────────
@@ -26,7 +28,7 @@
  */
 
 import { journey, step, expect } from '@elastic/synthetics';
-import { fetchCertInfo, checkCertTrusted, logCertInfo } from '../helpers/tls';
+import { fetchCertInfo, checkCertTrusted, checkCrlRevocation, logCertInfo } from '../helpers/tls';
 
 const TARGET_HOST = 'revoked.badssl.com';
 const TARGET_PORT = 443;
@@ -61,11 +63,12 @@ journey('badssl.com Revoked Certificate – Browser + TLS Hash', ({ page }) => {
   });
 
   step('Extract TLS certificate fingerprints from revoked.badssl.com', async () => {
-    // Fetch cert info and trust status concurrently — both open independent
-    // TLS sockets, so running them in parallel saves one full handshake RTT.
-    const [cert, trusted] = await Promise.all([
+    // Run all three checks concurrently — each opens an independent TLS socket
+    // (and one HTTP connection for the CRL), so parallelising saves round trips.
+    const [cert, trusted, revocationStatus] = await Promise.all([
       fetchCertInfo(TARGET_HOST, TARGET_PORT),
       checkCertTrusted(TARGET_HOST, TARGET_PORT),
+      checkCrlRevocation(TARGET_HOST, TARGET_PORT),
     ]);
 
     logCertInfo(TARGET_HOST, TARGET_PORT, cert);
@@ -73,14 +76,20 @@ journey('badssl.com Revoked Certificate – Browser + TLS Hash', ({ page }) => {
     // Fingerprint format assertions — SHA-256 is the primary fingerprint.
     expect(cert.sha256).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
 
-    // Check whether the OS trust store considers this cert valid.
-    // For a revoked cert this should be false, though systems that do not
-    // perform revocation checking may report true.
-    console.log(`  Trusted by system CA : ${trusted}`);
-    console.log(
-      trusted
-        ? '  ⚠ System did not detect revocation (soft-fail OCSP behaviour)'
-        : '  ✓ System correctly rejected the revoked certificate'
-    );
+    // Log chain trust status as a JSON block.
+    console.log(JSON.stringify({
+      trust: {
+        chain_valid: trusted,
+      },
+    }));
+
+    // Log CRL revocation status as a JSON block.
+    // LE discontinued OCSP in mid-2025; revocation is detected via CRL.
+    console.log(JSON.stringify({
+      revocation: {
+        status: revocationStatus,
+        method: 'crl',
+      },
+    }));
   });
 });
