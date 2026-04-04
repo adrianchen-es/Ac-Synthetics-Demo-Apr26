@@ -1,0 +1,25 @@
+{
+  "name": "ac-synthetics-demo-apr26",
+  "version": "1.0.0",
+  "description": "Elastic Synthetics project to extract and validate TLS server certificate fingerprints (SHA-256 primary, SHA-1 optional) across multiple real-world scenarios",
+  "private": true,
+  "scripts": {
+    "test": "elastic-synthetics journeys/",
+    "test:dry": "elastic-synthetics journeys/ --dry-run",
+    "test:unit": "node --import tsx --test tests/*.test.ts",
+    "test:ci": "npm run test:dry && npm run test:unit",
+    "push": "elastic-synthetics push --config synthetics.config.ts",
+    "push:staging": "elastic-synthetics push --config synthetics.config.ts --space staging"
+  },
+  "dependencies": {
+    "@elastic/synthetics": "^1.23.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
