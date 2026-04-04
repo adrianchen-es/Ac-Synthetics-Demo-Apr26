@@ -1,0 +1,22 @@
+{
+  "name": "ac-synthetics-demo-apr26",
+  "version": "1.0.0",
+  "description": "Elastic Synthetics project to extract TLS server certificate hashes (SHA1 & SHA256)",
+  "private": true,
+  "scripts": {
+    "test": "elastic-synthetics journeys/",
+    "test:dry": "elastic-synthetics journeys/ --dry-run",
+    "push": "elastic-synthetics push --config synthetics.config.ts",
+    "push:staging": "elastic-synthetics push --config synthetics.config.ts --space staging"
+  },
+  "dependencies": {
+    "@elastic/synthetics": "^1.23.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

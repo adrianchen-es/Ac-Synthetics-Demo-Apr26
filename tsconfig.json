@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "strict": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "outDir": ".synthetics",
+    "rootDir": ".",
+    "skipLibCheck": true
+  },
+  "include": ["journeys/**/*.ts", "synthetics.config.ts"],
+  "exclude": ["node_modules", ".synthetics"]
+}
