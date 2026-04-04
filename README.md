@@ -1,6 +1,8 @@
 # Ac-Synthetics-Demo-Apr26
 
-Elastic Synthetics project that extracts and validates TLS server certificate fingerprints (SHA-1 and SHA-256), and combines browser page tests with TLS certificate inspection across several real-world scenarios.
+Elastic Synthetics project that extracts and validates TLS server certificate fingerprints (SHA-256 primary, SHA-1 optional), and combines browser page tests with TLS certificate inspection across several real-world scenarios.
+
+[![CI](https://github.com/adrianchen-es/Ac-Synthetics-Demo-Apr26/actions/workflows/ci.yml/badge.svg)](https://github.com/adrianchen-es/Ac-Synthetics-Demo-Apr26/actions/workflows/ci.yml)
 
 ---
 
@@ -9,11 +11,11 @@ Elastic Synthetics project that extracts and validates TLS server certificate fi
 | Journey file | Type | Target | Description |
 |---|---|---|---|
 | `journeys/tls-certificate.journey.ts` | TLS-only | Configurable (default: `example.com`) | Generic host TLS hash extraction — no browser, minimal overhead |
-| `journeys/badssl-revoked.journey.ts` | Browser + TLS | `revoked.badssl.com` | Single-page browser test + TLS fingerprint for a revoked certificate |
-| `journeys/kibana-login.journey.ts` | Browser + TLS | Elastic Cloud Kibana | Multi-step login flow + TLS fingerprint |
+| `journeys/badssl-revoked.journey.ts` | Browser + TLS | `revoked.badssl.com` | Single-page browser test + SHA-256 fingerprint for a revoked certificate |
+| `journeys/kibana-login.journey.ts` | Browser + TLS | Elastic Cloud Kibana | Multi-step login flow + SHA-256 fingerprint |
 | `journeys/self-signed-ca.journey.ts` | TLS-only | `self-signed.badssl.com` | Demonstrates CA trust failure and fingerprint extraction regardless |
 
-All TLS extraction uses the Node.js built-in `tls` + `crypto` modules — no browser is launched for the certificate inspection steps.
+All TLS extraction uses the Node.js built-in `tls` module — the SHA-256 fingerprint is read directly from `cert.fingerprint256`, a value pre-computed by OpenSSL during the TLS handshake at zero extra cost. No browser is launched for the certificate inspection steps.
 
 ---
 
@@ -22,68 +24,163 @@ All TLS extraction uses the Node.js built-in `tls` + `crypto` modules — no bro
 ### TLS-only journey (`tls-certificate.journey.ts`)
 
 * Opens a raw TLS socket to the target host
-* Computes SHA-1 and SHA-256 fingerprints from the DER-encoded leaf certificate
+* Reads the SHA-256 fingerprint from `cert.fingerprint256` (pre-computed by OpenSSL — no extra hashing step)
+* SHA-1 is also available as an optional field (`cert.fingerprint`) but is not asserted
 * Asserts the certificate has not expired
 * No browser launched → typically completes in < 200 ms
 
 ### badssl.com Revoked Certificate journey (`badssl-revoked.journey.ts`)
 
 * **Step 1 – Browser:** navigates to `https://revoked.badssl.com/` and checks the page title
-* **Step 2 – TLS:** extracts the certificate fingerprints and checks whether the OS trust store detects the revocation
+* **Step 2 – TLS:** extracts the SHA-256 fingerprint and checks whether the OS trust store detects the revocation
 
-> Chromium uses soft-fail OCSP checking in headless mode, so the browser page loads despite the revocation.  The `ignoreHTTPSErrors: true` Playwright option is set in `synthetics.config.ts` to confirm this is intentional for these demo journeys.
+> Chromium uses soft-fail OCSP checking in headless mode, so the browser page loads despite the revocation. The `ignoreHTTPSErrors: true` Playwright option is set in `synthetics.config.ts` to confirm this is intentional for these demo journeys.
 
 ### Kibana Login journey (`kibana-login.journey.ts`)
 
 * **Step 1 – Browser:** navigates to the Kibana URL, verifies the login page is shown
 * **Step 2 – Browser:** clicks the "Log in with Elasticsearch" button
 * **Step 3 – Browser:** verifies the native auth username/password form appears
-* **Step 4 – TLS:** extracts certificate fingerprints and asserts the cert is not expired
+* **Step 4 – TLS:** extracts the SHA-256 fingerprint and asserts the cert is not expired
 
 The target Kibana URL defaults to `https://ac-siem-hosted-a183da.kb.us-west2.gcp.elastic-cloud.com/` but can be overridden via `KIBANA_TARGET_URL` or the monitor `params.targetUrl` field.
 
 ### Self-Signed / Internal CA journey (`self-signed-ca.journey.ts`)
 
 * **Step 1 – TLS:** confirms the connection is **rejected** when no custom CA is loaded (correct security behaviour)
-* **Step 2 – TLS:** extracts the certificate fingerprint with `rejectUnauthorized: false` (always succeeds)
+* **Step 2 – TLS:** extracts the SHA-256 fingerprint with `rejectUnauthorized: false` (always succeeds regardless of CA trust)
 * **Step 3 – TLS:** asserts the certificate is not expired (independent of CA trust)
+
+To trust an internal CA, pass its PEM to `fetchCertInfo(host, port, { ca })` — see `helpers/tls.ts` for details.
 
 ---
 
 ## Prerequisites
 
-| Tool | Minimum version |
-|------|----------------|
-| Node.js | 18 LTS |
-| npm | 9 |
+| Tool | Minimum version | Notes |
+|------|----------------|-------|
+| Node.js | 18 LTS | 20 LTS or 22 LTS also supported |
+| npm | 9 | Bundled with Node.js 18+ |
+
+### Installing Node.js
+
+Choose the method that suits your operating system:
+
+**macOS — using [nvm](https://github.com/nvm-sh/nvm) (recommended)**
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+# Restart your terminal, then:
+nvm install 20
+nvm use 20
+```
+
+**macOS — using [Homebrew](https://brew.sh)**
+```bash
+brew install node@20
+```
+
+**Linux (Debian/Ubuntu)**
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+
+**Linux (RHEL/Amazon Linux)**
+```bash
+curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+sudo yum install -y nodejs
+```
+
+**Windows — using [nvm-windows](https://github.com/coreybutler/nvm-windows) (recommended)**
+
+Download and run the installer from [nvm-windows releases](https://github.com/coreybutler/nvm-windows/releases/latest), then in **PowerShell (Run as Administrator)**:
+```powershell
+nvm install 20
+nvm use 20
+```
+
+**Windows — using [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/) (PowerShell)**
+```powershell
+winget install OpenJS.NodeJS.LTS
+```
+
+**All platforms — [official installer](https://nodejs.org/en/download)**
+Download the LTS installer from [nodejs.org](https://nodejs.org/en/download) for a guided setup on any OS.
+
+Verify your installation:
+```bash
+node --version   # should print v18.x.x, v20.x.x, or v22.x.x
+npm --version    # should print 9.x.x or higher
+```
+
+---
+
+## Installation
 
 ```bash
-# Install project dependencies (includes @elastic/synthetics, Playwright, tsx)
+# Clone the repository
+git clone https://github.com/adrianchen-es/Ac-Synthetics-Demo-Apr26.git
+cd Ac-Synthetics-Demo-Apr26
+
+# Install all dependencies (uses package-lock.json for reproducible installs)
 npm ci
 ```
+
+> **Note:** `npm ci` is preferred over `npm install` — it installs exact versions from `package-lock.json` and fails fast if the lockfile is out of sync, preventing unexpected version drift.
 
 ---
 
 ## Running locally
 
-```bash
-# Run all journeys in the journeys/ directory (full output, requires network)
-npm test
+### macOS / Linux
 
-# Dry-run – validates journey structure without executing steps (no network needed)
+```bash
+# Validate journey structure without network access
 npm run test:dry
 
-# Run unit tests for helpers (no network needed)
+# Run unit tests for helper functions (no network needed)
 npm run test:unit
 
 # Run all CI-safe checks (dry-run + unit tests)
 npm run test:ci
 
-# Target a specific host/port via environment variables (TLS-only journey)
+# Run all journeys (requires network access)
+npm test
+
+# Override the target host for the TLS-only journey
 TLS_TARGET_HOST=myserver.example.com TLS_TARGET_PORT=8443 npm test
 
 # Override the Kibana URL for the login journey
 KIBANA_TARGET_URL=https://my-kibana.example.com npm test
+```
+
+### Windows (PowerShell)
+
+```powershell
+# Validate journey structure without network access
+npm run test:dry
+
+# Run unit tests for helper functions (no network needed)
+npm run test:unit
+
+# Run all CI-safe checks
+npm run test:ci
+
+# Run all journeys (requires network access)
+npm test
+
+# Override the target host for the TLS-only journey
+$env:TLS_TARGET_HOST="myserver.example.com"; $env:TLS_TARGET_PORT="8443"; npm test
+
+# Override the Kibana URL for the login journey
+$env:KIBANA_TARGET_URL="https://my-kibana.example.com"; npm test
+```
+
+### Windows (Command Prompt)
+
+```cmd
+set TLS_TARGET_HOST=myserver.example.com && set TLS_TARGET_PORT=8443 && npm test
+set KIBANA_TARGET_URL=https://my-kibana.example.com && npm test
 ```
 
 ---
@@ -96,42 +193,51 @@ The repository includes a GitHub Actions workflow at `.github/workflows/ci.yml` 
 2. **Journey structure validation** (`npm run test:dry`) — no network required
 3. **Unit tests** (`npm run test:unit`) — no network required
 
-[![CI](https://github.com/adrianchen-es/Ac-Synthetics-Demo-Apr26/actions/workflows/ci.yml/badge.svg)](https://github.com/adrianchen-es/Ac-Synthetics-Demo-Apr26/actions/workflows/ci.yml)
-
 ---
 
 ## Pushing monitors to Elastic
 
-### Prerequisites
+### Step 1 — Set credentials
 
-Set these environment variables (or store them in a `.env` file that is **not** committed — it is excluded by `.gitignore`):
-
+**macOS / Linux**
 ```bash
 export KIBANA_URL="https://your-deployment.kb.us-east-1.aws.elastic-cloud.com"
 export SYNTHETICS_API_KEY="<your-kibana-api-key>"
 ```
 
-> **Creating a Kibana API key**
+**Windows (PowerShell)**
+```powershell
+$env:KIBANA_URL = "https://your-deployment.kb.us-east-1.aws.elastic-cloud.com"
+$env:SYNTHETICS_API_KEY = "<your-kibana-api-key>"
+```
+
+**Windows (Command Prompt)**
+```cmd
+set KIBANA_URL=https://your-deployment.kb.us-east-1.aws.elastic-cloud.com
+set SYNTHETICS_API_KEY=<your-kibana-api-key>
+```
+
+Alternatively, store them in a `.env` file in the project root (excluded from git via `.gitignore`):
+```
+KIBANA_URL=https://your-deployment.kb.us-east-1.aws.elastic-cloud.com
+SYNTHETICS_API_KEY=<your-kibana-api-key>
+```
+
+> **Creating a Kibana API key:**
 > Kibana → Stack Management → API Keys → Create API key
-> Assign the `synthetics_writer` built-in role (or equivalent custom role).
+> Assign the `synthetics_writer` built-in role (or an equivalent custom role).
 
-### Push to the `default` space
+### Step 2 — Push monitors
 
 ```bash
+# Push to the default Kibana space
 npm run push
-# equivalent to:
-npx elastic-synthetics push --config synthetics.config.ts
-```
 
-### Push to a named space (e.g. `staging`)
-
-```bash
+# Push to a named space (e.g. staging)
 npm run push:staging
-# equivalent to:
-npx elastic-synthetics push --config synthetics.config.ts --space staging
 ```
 
-### Push with inline credentials (CI/CD)
+### CI/CD — inline credentials
 
 ```bash
 KIBANA_URL="https://..." SYNTHETICS_API_KEY="..." npm run push
@@ -158,178 +264,52 @@ KIBANA_URL="https://..." SYNTHETICS_API_KEY="..." npm run push
 ├── synthetics.config.ts                    # Elastic Synthetics project config
 ├── tsconfig.json                           # TypeScript compiler config
 ├── package.json                            # Dependencies & npm scripts
+├── package-lock.json                       # Lockfile for reproducible installs
 └── .gitignore                              # OS, editor, Node & secret exclusions
 ```
 
 ---
 
-## Configuration
+## Dependencies
 
-Edit **`synthetics.config.ts`** to change:
+| Package | Type | Purpose |
+|---------|------|---------|
+| `@elastic/synthetics` | production | Journey runner, `journey`/`step`/`expect` APIs, Playwright bundled |
+| `@types/node` | dev | TypeScript types for Node.js built-ins (`tls`, `crypto`, `Buffer`) |
+| `tsx` | dev | Runs TypeScript test files directly with `node --import tsx --test` |
+| `typescript` | dev | Type-checking (`npx tsc --noEmit`) |
+
+`@elastic/synthetics` bundles its own Playwright installation — no separate `playwright install` step is needed.
+
+---
+
+## Configuration reference
+
+Edit **`synthetics.config.ts`** to change project-wide settings:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `project.id` | `ac-synthetics-tls-demo` | Unique monitor project ID in Kibana |
 | `project.url` | env `KIBANA_URL` | Kibana URL |
 | `project.space` | `default` | Kibana space |
-| `monitor.schedule` | `5` (minutes) | How often the monitor runs |
+| `monitor.schedule` | `5` (minutes) | How often each monitor runs |
 | `monitor.locations` | `us_east` | Elastic-managed location(s) |
 | `playwrightOptions.ignoreHTTPSErrors` | `true` | Required for revoked/self-signed cert journeys |
 
-Override per-journey environment variables:
+Per-journey environment variables:
 
-| Variable | Journey | Description |
-|---|---|---|
-| `TLS_TARGET_HOST` | `tls-certificate` | Hostname to inspect (default: `example.com`) |
-| `TLS_TARGET_PORT` | `tls-certificate` | Port (default: `443`) |
-| `KIBANA_TARGET_URL` | `kibana-login` | Kibana URL to test (or set `params.targetUrl`) |
+| Variable | Journey | Default | Description |
+|---|---|---|---|
+| `TLS_TARGET_HOST` | `tls-certificate` | `example.com` | Hostname to inspect |
+| `TLS_TARGET_PORT` | `tls-certificate` | `443` | Port to connect on |
+| `KIBANA_TARGET_URL` | `kibana-login` | *(Elastic Cloud demo)* | Kibana URL to test |
 
 ---
 
 ## Security notes
 
 * `rejectUnauthorized: false` is used only in certificate inspection contexts — the socket is destroyed immediately after `getPeerCertificate()` returns. No application data is exchanged.
-* `ignoreHTTPSErrors: true` in `synthetics.config.ts` is intentional for this demo project which targets hosts with deliberately bad certificates. Do not use this in monitors that make authenticated requests.
+* `ignoreHTTPSErrors: true` in `synthetics.config.ts` is intentional for this demo project which targets hosts with deliberately problematic certificates. Do not use this in production monitors that make authenticated requests.
+* SHA-256 (`cert.fingerprint256`) is the primary fingerprint. SHA-1 (`cert.fingerprint`) is available as an optional field but should not be used as a sole trust anchor.
 * API keys and `.env` files are excluded from version control via `.gitignore`.
 * `package-lock.json` **is** committed to enable reproducible `npm ci` installs in CI.
-
-
----
-
-## How it works
-
-The `tls-certificate` journey uses Node.js's built-in **`tls`** module to open a raw TLS socket directly to the target host.  It never launches a browser, which means:
-
-* **Fast** – a single TCP handshake typically completes in < 200 ms
-* **Lightweight** – no Chromium process, no page load, no network overhead beyond the TLS handshake
-* **Secure** – certificate is inspected server-side; no sensitive page content is loaded
-
-The journey performs two steps:
-
-1. **Extract fingerprints** – connects, reads the raw DER-encoded leaf certificate, and computes `SHA-1` and `SHA-256` fingerprints using Node.js `crypto`.
-2. **Verify expiry** – connects a second time to read `valid_to` and asserts the certificate has not expired.
-
----
-
-## Prerequisites
-
-| Tool | Minimum version |
-|------|----------------|
-| Node.js | 18 LTS |
-| npm | 9 |
-
-```bash
-# Install project dependencies (includes @elastic/synthetics & Playwright)
-npm install
-```
-
----
-
-## Running locally
-
-```bash
-# Run all journeys in the journeys/ directory (full output)
-npm test
-
-# Dry-run – validates journey syntax without executing steps
-npm run test:dry
-
-# Target a specific host/port via environment variables
-TLS_TARGET_HOST=myserver.example.com TLS_TARGET_PORT=8443 npm test
-```
-
-### Sample output
-
-```
-Journey: TLS Certificate Hash Extraction
-  ✓  Connect to example.com:443 and extract TLS certificate (187 ms)
-       Host    : example.com:443
-       SHA-1   : AA:BB:CC:...
-       SHA-256 : 11:22:33:...
-  ✓  Verify certificate is not expired (143 ms)
-       Certificate expires: 2026-11-15T12:00:00.000Z
-
-2 passed, 0 failed
-```
-
----
-
-## Pushing monitors to Elastic
-
-### Prerequisites
-
-Set these environment variables (or store them in a `.env` file that is **not** committed – it is excluded by `.gitignore`):
-
-```bash
-export KIBANA_URL="https://your-deployment.kb.us-east-1.aws.elastic-cloud.com"
-export SYNTHETICS_API_KEY="<your-kibana-api-key>"
-```
-
-> **Creating a Kibana API key**
-> Kibana → Stack Management → API Keys → Create API key
-> Assign the `synthetics_writer` built-in role (or equivalent custom role).
-
-### Push to the `default` space
-
-```bash
-npm run push
-# equivalent to:
-npx elastic-synthetics push --config synthetics.config.ts
-```
-
-### Push to a named space (e.g. `staging`)
-
-```bash
-npm run push:staging
-# equivalent to:
-npx elastic-synthetics push --config synthetics.config.ts --space staging
-```
-
-### Push with inline credentials (CI/CD)
-
-```bash
-KIBANA_URL="https://..." SYNTHETICS_API_KEY="..." npm run push
-```
-
----
-
-## Project structure
-
-```
-.
-├── journeys/
-│   └── tls-certificate.journey.ts   # TLS hash extraction journey
-├── synthetics.config.ts             # Elastic Synthetics project config
-├── tsconfig.json                    # TypeScript compiler config
-├── package.json                     # Dependencies & npm scripts
-└── .gitignore                       # OS, editor, Node & secret exclusions
-```
-
----
-
-## Configuration
-
-Edit **`synthetics.config.ts`** to change:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `project.id` | `ac-synthetics-tls-demo` | Unique monitor project ID in Kibana |
-| `project.url` | env `KIBANA_URL` | Kibana URL |
-| `project.space` | `default` | Kibana space |
-| `monitor.schedule` | `5` (minutes) | How often the monitor runs |
-| `monitor.locations` | `us_east` | Elastic-managed location(s) |
-
-Override **`TLS_TARGET_HOST`** / **`TLS_TARGET_PORT`** at runtime, or set
-`params.host` / `params.port` per monitor in `synthetics.config.ts` for
-multi-host deployments.
-
----
-
-## Security notes
-
-* `rejectUnauthorized: false` is intentional – the journey's purpose is to
-  *inspect* the certificate, not to make an authenticated HTTPS request.
-  No sensitive data is transmitted over the socket.
-* API keys and `.env` files are excluded from version control via `.gitignore`.
-* The journey itself is safe to run against self-signed or expired certificates
-  (it reports expiry as a failed check, not a crash).

@@ -1,7 +1,7 @@
 {
   "name": "ac-synthetics-demo-apr26",
   "version": "1.0.0",
-  "description": "Elastic Synthetics project to extract TLS server certificate hashes (SHA1 & SHA256)",
+  "description": "Elastic Synthetics project to extract and validate TLS server certificate fingerprints (SHA-256 primary, SHA-1 optional) across multiple real-world scenarios",
   "private": true,
   "scripts": {
     "test": "elastic-synthetics journeys/",
