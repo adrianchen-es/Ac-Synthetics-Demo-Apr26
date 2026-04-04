@@ -73,7 +73,7 @@ journey('Self-Signed / Internal CA – TLS Extraction', ({ page: _page }) => {
     expect(cachedCert.sha256).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
 
     console.log(
-      '\n  ℹ To trust this cert in production, load the issuing CA like this:\n' +
+      '  ℹ To trust this cert in production, load the issuing CA like this:\n' +
       '    const ca = fs.readFileSync("/path/to/internal-ca.pem");\n' +
       '    const cert = await fetchCertInfo(host, port, { ca });\n' +
       '    // checkCertTrusted(host, port, { ca }) will then return true'
@@ -93,5 +93,29 @@ journey('Self-Signed / Internal CA – TLS Extraction', ({ page: _page }) => {
       cert.validTo.getTime(),
       `TLS certificate for ${TARGET_HOST} has expired`
     ).toBeGreaterThan(now.getTime());
+  });
+
+  step('Validate trust status of the self-signed certificate', async () => {
+    const trusted = await checkCertTrusted(TARGET_HOST, TARGET_PORT);
+
+    console.log(`  checkCertTrusted(${TARGET_HOST}) = ${trusted}`);
+
+    // For a self-signed certificate NOT in the system trust store, this MUST
+    // be false.  If it returns true, the system trust store has been modified
+    // to include the badssl self-signed CA, which would be unusual.
+    expect(trusted, 'Self-signed cert should NOT be trusted by the default system CA').toBe(false);
+
+    console.log(
+      '  ✓ Connection correctly rejected – to trust this cert, load the issuing CA via the `ca` option'
+    );
+    try {
+      expect(trusted).toBe(true);
+    } catch (error) {
+      throw new Error(`Custom failure: Trust status is 'false'. Details: ${JSON.stringify({
+      trust: {
+        status: trusted,
+      },
+    })}`);
+    }
   });
 });

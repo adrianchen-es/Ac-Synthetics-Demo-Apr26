@@ -91,6 +91,15 @@ journey('badssl.com Revoked Certificate – Browser + TLS Hash', ({ page }) => {
         method: 'crl',
       },
     }));
-    expect(revocationStatus).not.toBe("revoked");
+    try {
+      expect(revocationStatus).not.toBe("revoked");
+    } catch (error) {
+      throw new Error(`Custom failure: Revocation status is 'revoked'. Details: ${JSON.stringify({
+      revocation: {
+        status: revocationStatus,
+        method: 'crl',
+      },
+    })}`);
+    }
   });
 });
