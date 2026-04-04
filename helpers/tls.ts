@@ -340,8 +340,9 @@ function checkSerialInCrl(crlDer: Buffer, serialHex: string): 'revoked' | 'good'
     const tbsCertList = readTlv(certList.value, 0);
     let pos = 0;
 
-    // version [0] EXPLICIT (tag 0xa0) — present in v2 CRLs
-    if (tbsCertList.value[pos] === 0xa0) pos = readTlv(tbsCertList.value, pos).end;
+    // version INTEGER OPTIONAL (tag 0x02, value 0x01 for v2) — bare INTEGER,
+    // NOT context-wrapped like TBSCertificate version.  Skip if present.
+    if (tbsCertList.value[pos] === 0x02) pos = readTlv(tbsCertList.value, pos).end;
     // signature AlgorithmIdentifier (0x30)
     pos = readTlv(tbsCertList.value, pos).end;
     // issuer Name (0x30)
