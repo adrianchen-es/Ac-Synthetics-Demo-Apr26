@@ -30,15 +30,20 @@ const config: SyntheticsConfig = {
   },
 
   /**
-   * Playwright launch options – used only when running journeys locally via
-   * `npm test`.  The TLS journey performs its certificate extraction with the
-   * Node.js `tls` module (no browser needed) so these settings have minimal
-   * impact on execution time.
+   * Playwright launch options – used when running journeys locally via `npm test`
+   * and when executing browser-based journeys on Elastic managed infrastructure.
+   *
+   * `ignoreHTTPSErrors: true` is intentional for this demo project because
+   * several journeys target hosts with deliberately problematic certificates
+   * (revoked, self-signed, expired) to demonstrate TLS inspection behaviour.
+   * Do not set this in production monitors that make authenticated requests.
    */
   playwrightOptions: {
     headless: true,
     chromiumSandbox: false,
+    ignoreHTTPSErrors: true,
   },
 };
 
 export default config;
+
