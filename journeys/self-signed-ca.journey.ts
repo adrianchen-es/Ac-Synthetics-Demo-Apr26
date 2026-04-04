@@ -36,12 +36,16 @@
  */
 
 import { journey, step, expect } from '@elastic/synthetics';
-import { fetchCertInfo, checkCertTrusted, logCertInfo } from '../helpers/tls';
+import { fetchCertInfo, checkCertTrusted, logCertInfo, CertInfo } from '../helpers/tls';
 
 const TARGET_HOST = 'self-signed.badssl.com';
 const TARGET_PORT = 443;
 
 journey('Self-Signed / Internal CA – TLS Extraction', ({ page: _page }) => {
+  // Shared across steps so step 3 reuses the cert fetched in step 2
+  // instead of opening a third TLS connection.
+  let cachedCert: CertInfo | undefined;
+
   step('Confirm untrusted connection is rejected (expected security behaviour)', async () => {
     const trusted = await checkCertTrusted(TARGET_HOST, TARGET_PORT);
 
@@ -62,11 +66,11 @@ journey('Self-Signed / Internal CA – TLS Extraction', ({ page: _page }) => {
     // fingerprint by skipping certificate verification.  This is safe here
     // because we are ONLY reading the certificate, not sending or receiving
     // any application data.
-    const cert = await fetchCertInfo(TARGET_HOST, TARGET_PORT);
-    logCertInfo(TARGET_HOST, TARGET_PORT, cert);
+    cachedCert = await fetchCertInfo(TARGET_HOST, TARGET_PORT);
+    logCertInfo(TARGET_HOST, TARGET_PORT, cachedCert);
 
     // Fingerprint format assertions — SHA-256 is the primary fingerprint.
-    expect(cert.sha256).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
+    expect(cachedCert.sha256).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
 
     console.log(
       '\n  ℹ To trust this cert in production, load the issuing CA like this:\n' +
@@ -77,7 +81,8 @@ journey('Self-Signed / Internal CA – TLS Extraction', ({ page: _page }) => {
   });
 
   step('Verify certificate is not expired (independent of CA trust)', async () => {
-    const cert = await fetchCertInfo(TARGET_HOST, TARGET_PORT);
+    // Reuse the cert from the previous step; fall back only if step 2 failed.
+    const cert = cachedCert ?? await fetchCertInfo(TARGET_HOST, TARGET_PORT);
     const now = new Date();
 
     console.log(`  Certificate valid until: ${cert.validTo.toISOString()}`);

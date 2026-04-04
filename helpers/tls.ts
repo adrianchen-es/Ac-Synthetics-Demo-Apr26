@@ -93,7 +93,7 @@ export function fetchLeafCertDer(
   port: number,
   options: TlsFetchOptions = {}
 ): Promise<Buffer> {
-  const { ca, timeoutMs = 10_000 } = options;
+  const { ca, timeoutMs = 5_000 } = options;
 
   return new Promise((resolve, reject) => {
     const socket = tls.connect(
@@ -148,7 +148,7 @@ export async function fetchCertInfo(
   port: number,
   options: TlsFetchOptions = {}
 ): Promise<CertInfo> {
-  const { ca, timeoutMs = 10_000 } = options;
+  const { ca, timeoutMs = 5_000 } = options;
 
   return new Promise((resolve, reject) => {
     const socket = tls.connect(
@@ -264,27 +264,21 @@ export function computeFingerprint(
 }
 
 /**
- * Format a continuous hex string as colon-separated byte pairs.
- * Example: `"AABBCC"` → `"AA:BB:CC"`
- */
-export function colonSeparated(hex: string): string {
-  if (!hex || hex.length % 2 !== 0) {
-    throw new Error(`colonSeparated: cannot split odd-length hex string "${hex}"`);
-  }
-  return hex.match(/.{2}/g)!.join(':');
-}
-
-/**
- * Log certificate information in a consistent format.
+ * Log certificate information as two JSON blocks matching the Elastic
+ * `tls.server.x509` / `tls.server.hash` field layout.
  * Used by all journeys so output is easy to read and compare.
  */
 export function logCertInfo(host: string, port: number, cert: CertInfo): void {
   console.log(`\n  ── TLS Certificate: ${host}:${port} ──`);
-  console.log(`  Subject  : ${cert.subject}`);
-  console.log(`  Issuer   : ${cert.issuer}`);
-  console.log(`  Valid    : ${cert.validFrom.toISOString()} → ${cert.validTo.toISOString()}`);
-  if (cert.sha1) {
-    console.log(`  SHA-1    : ${cert.sha1}`);
-  }
-  console.log(`  SHA-256  : ${cert.sha256}`);
+  console.log(JSON.stringify({
+    x509: {
+      not_after: cert.validTo.toISOString(),
+      not_before: cert.validFrom.toISOString(),
+      subject: { common_name: cert.subject },
+      issuer: { common_name: cert.issuer },
+    },
+  }, null, 2));
+  const hashBlock: Record<string, string> = { sha256: cert.sha256 };
+  if (cert.sha1) hashBlock['sha1'] = cert.sha1;
+  console.log(JSON.stringify({ hash: hashBlock }, null, 2));
 }

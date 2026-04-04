@@ -61,7 +61,13 @@ journey('badssl.com Revoked Certificate – Browser + TLS Hash', ({ page }) => {
   });
 
   step('Extract TLS certificate fingerprints from revoked.badssl.com', async () => {
-    const cert = await fetchCertInfo(TARGET_HOST, TARGET_PORT);
+    // Fetch cert info and trust status concurrently — both open independent
+    // TLS sockets, so running them in parallel saves one full handshake RTT.
+    const [cert, trusted] = await Promise.all([
+      fetchCertInfo(TARGET_HOST, TARGET_PORT),
+      checkCertTrusted(TARGET_HOST, TARGET_PORT),
+    ]);
+
     logCertInfo(TARGET_HOST, TARGET_PORT, cert);
 
     // Fingerprint format assertions — SHA-256 is the primary fingerprint.
@@ -70,7 +76,6 @@ journey('badssl.com Revoked Certificate – Browser + TLS Hash', ({ page }) => {
     // Check whether the OS trust store considers this cert valid.
     // For a revoked cert this should be false, though systems that do not
     // perform revocation checking may report true.
-    const trusted = await checkCertTrusted(TARGET_HOST, TARGET_PORT);
     console.log(`  Trusted by system CA : ${trusted}`);
     console.log(
       trusted

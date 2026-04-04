@@ -217,12 +217,6 @@ set KIBANA_URL=https://your-deployment.kb.us-east-1.aws.elastic-cloud.com
 set SYNTHETICS_API_KEY=<your-kibana-api-key>
 ```
 
-Alternatively, store them in a `.env` file in the project root (excluded from git via `.gitignore`):
-```
-KIBANA_URL=https://your-deployment.kb.us-east-1.aws.elastic-cloud.com
-SYNTHETICS_API_KEY=<your-kibana-api-key>
-```
-
 > **Creating a Kibana API key:**
 > Kibana → Stack Management → API Keys → Create API key
 > Assign the `synthetics_writer` built-in role (or an equivalent custom role).
@@ -311,5 +305,5 @@ Per-journey environment variables:
 * `rejectUnauthorized: false` is used only in certificate inspection contexts — the socket is destroyed immediately after `getPeerCertificate()` returns. No application data is exchanged.
 * `ignoreHTTPSErrors: true` in `synthetics.config.ts` is intentional for this demo project which targets hosts with deliberately problematic certificates. Do not use this in production monitors that make authenticated requests.
 * SHA-256 (`cert.fingerprint256`) is the primary fingerprint. SHA-1 (`cert.fingerprint`) is available as an optional field but should not be used as a sole trust anchor.
-* API keys and `.env` files are excluded from version control via `.gitignore`.
+* API keys are excluded from version control via `.gitignore`.
 * `package-lock.json` **is** committed to enable reproducible `npm ci` installs in CI.

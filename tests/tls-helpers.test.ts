@@ -10,51 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeFingerprint, colonSeparated } from '../helpers/tls';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// colonSeparated
-// ─────────────────────────────────────────────────────────────────────────────
-
-test('colonSeparated: formats 2-char hex string', () => {
-  assert.equal(colonSeparated('AB'), 'AB');
-});
-
-test('colonSeparated: formats 4-char hex string', () => {
-  assert.equal(colonSeparated('AABB'), 'AA:BB');
-});
-
-test('colonSeparated: formats 6-char hex string', () => {
-  assert.equal(colonSeparated('AABBCC'), 'AA:BB:CC');
-});
-
-test('colonSeparated: formats SHA-1 length (40 chars → 20 pairs)', () => {
-  const hex = 'A'.repeat(40);
-  const result = colonSeparated(hex);
-  const pairs = result.split(':');
-  assert.equal(pairs.length, 20, 'Should produce 20 pairs for SHA-1');
-  assert.ok(pairs.every((p) => p.length === 2), 'Each pair should be 2 chars');
-});
-
-test('colonSeparated: formats SHA-256 length (64 chars → 32 pairs)', () => {
-  const hex = 'F'.repeat(64);
-  const result = colonSeparated(hex);
-  const pairs = result.split(':');
-  assert.equal(pairs.length, 32, 'Should produce 32 pairs for SHA-256');
-  assert.ok(pairs.every((p) => p.length === 2), 'Each pair should be 2 chars');
-});
-
-test('colonSeparated: throws on odd-length hex string', () => {
-  assert.throws(
-    () => colonSeparated('ABC'),
-    /colonSeparated/,
-    'Should throw for odd-length hex'
-  );
-});
-
-test('colonSeparated: handles empty string by throwing', () => {
-  assert.throws(() => colonSeparated(''), /colonSeparated/);
-});
+import { computeFingerprint } from '../helpers/tls';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // computeFingerprint
@@ -103,24 +59,4 @@ test('computeFingerprint: same buffer always produces same digest', () => {
   const r1 = computeFingerprint(buf, 'sha256');
   const r2 = computeFingerprint(buf, 'sha256');
   assert.equal(r1, r2);
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Integration: colonSeparated(computeFingerprint(...)) produces valid format
-// ─────────────────────────────────────────────────────────────────────────────
-// NOTE: In production code, fetchCertInfo() reads cert.fingerprint256 directly
-// from the TLS handshake — no extra hashing step.  computeFingerprint is still
-// available for cases where you have a raw DER buffer and need a specific hash.
-
-test('colonSeparated(computeFingerprint(...)): valid SHA-256 fingerprint format', () => {
-  const der = Buffer.from('fake-cert-der');
-  const fp = colonSeparated(computeFingerprint(der, 'sha256'));
-  assert.match(fp, /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/, 'SHA-256 fingerprint format should match');
-});
-
-test('colonSeparated(computeFingerprint(...)): SHA-1 optional – still produces valid format when used', () => {
-  const der = Buffer.from('fake-cert-der');
-  // SHA-1 is optional in CertInfo; this tests the utility function directly.
-  const fp = colonSeparated(computeFingerprint(der, 'sha1'));
-  assert.match(fp, /^([0-9A-F]{2}:){19}[0-9A-F]{2}$/, 'SHA-1 fingerprint format should match when computed');
 });
