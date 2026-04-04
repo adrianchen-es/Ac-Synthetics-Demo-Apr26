@@ -462,10 +462,10 @@ export function logCertInfo(host: string, port: number, cert: CertInfo): void {
   const hashBlock: Record<string, string> = { sha256: cert.sha256 };
   if (cert.sha1) hashBlock['sha1'] = cert.sha1;
   console.log(`  ── TLS Certificate: ${host}:${port} ──`);
-  console.log(`TLS_CERT` +
+  console.log(`TLS_CERT,` +
     JSON.stringify({ x509: { not_after: cert.validTo.toISOString(), not_before: cert.validFrom.toISOString(), subject: { common_name: cert.subject }, issuer: { common_name: cert.issuer }, }, })
-     + 
-    `TLS_HASH` +
+    + `,` + 
+    `TLS_HASH,` +
     JSON.stringify({ hash: hashBlock })
   );
 }
