@@ -91,5 +91,6 @@ journey('badssl.com Revoked Certificate – Browser + TLS Hash', ({ page }) => {
         method: 'crl',
       },
     }));
+    expect(revocationStatus).not.toBe("revoked");
   });
 });
