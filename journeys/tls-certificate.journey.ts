@@ -26,7 +26,7 @@ import { fetchCertInfo, logCertInfo, CertInfo } from '../helpers/tls';
 const TARGET_HOST = process.env['TLS_TARGET_HOST'] ?? 'example.com';
 const TARGET_PORT = parseInt(process.env['TLS_TARGET_PORT'] ?? '443', 10);
 
-journey('TLS Certificate Hash – Generic Host', ({ page: _page, params }) => {
+journey('TLS Certificate Hash – Generic Host', ({ page, params }) => {
   // Allow the target host/port to be overridden via Elastic monitor params.
   const host: string = (params['host'] as string | undefined) ?? TARGET_HOST;
   const port: number =
@@ -37,6 +37,10 @@ journey('TLS Certificate Hash – Generic Host', ({ page: _page, params }) => {
   let cachedCert: CertInfo | undefined;
 
   step(`Extract TLS certificate fingerprints from ${host}:${port}`, async () => {
+    // Configure telemetry to report hostnames in place of about:blank
+    await page.route('**/*', route => route.fulfill({ status: 200, body: 'TLS check context' }));
+    await page.goto(`https://${host}`, { waitUntil: 'commit' });
+
     cachedCert = await fetchCertInfo(host, port);
 
     logCertInfo(host, port, cachedCert);
@@ -58,4 +62,5 @@ journey('TLS Certificate Hash – Generic Host', ({ page: _page, params }) => {
     ).toBeGreaterThan(now.getTime());
   });
 });
+
 

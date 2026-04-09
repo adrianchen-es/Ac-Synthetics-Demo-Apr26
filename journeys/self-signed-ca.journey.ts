@@ -41,12 +41,16 @@ import { fetchCertInfo, checkCertTrusted, logCertInfo, CertInfo } from '../helpe
 const TARGET_HOST = 'self-signed.badssl.com';
 const TARGET_PORT = 443;
 
-journey('Self-Signed / Internal CA – TLS Extraction', ({ page: _page }) => {
+journey('Self-Signed / Internal CA – TLS Extraction', ({ page }) => {
   // Shared across steps so step 3 reuses the cert fetched in step 2
   // instead of opening a third TLS connection.
   let cachedCert: CertInfo | undefined;
 
   step('Confirm untrusted connection is rejected (expected security behaviour)', async () => {
+    // Configure telemetry to report hostnames in place of about:blank
+    await page.route('**/*', route => route.fulfill({ status: 200, body: 'TLS check context' }));
+    await page.goto(`https://${TARGET_HOST}`, { waitUntil: 'commit' });
+
     const trusted = await checkCertTrusted(TARGET_HOST, TARGET_PORT);
 
     console.log(`  checkCertTrusted(${TARGET_HOST}) = ${trusted}`);
@@ -112,10 +116,10 @@ journey('Self-Signed / Internal CA – TLS Extraction', ({ page: _page }) => {
       expect(trusted).toBe(true);
     } catch (error) {
       throw new Error(`Custom failure: Trust status is 'false'. Details: ${JSON.stringify({
-      trust: {
-        status: trusted,
-      },
-    })}`);
+        trust: {
+          status: trusted,
+        },
+      })}`);
     }
   });
 });
