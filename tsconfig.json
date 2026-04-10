@@ -10,6 +10,12 @@
     "rootDir": ".",
     "skipLibCheck": true
   },
-  "include": ["helpers/**/*.ts", "journeys/**/*.ts", "tests/**/*.ts", "synthetics.config.ts"],
+  "include": [
+    "helpers/**/*.ts",
+    "journeys/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "synthetics.config.ts"
+  ],
   "exclude": ["node_modules", ".synthetics"]
 }

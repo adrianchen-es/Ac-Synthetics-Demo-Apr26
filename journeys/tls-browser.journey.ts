@@ -18,10 +18,10 @@ import { fetchCertInfo, checkCertTrusted, logCertInfo } from '../helpers/tls';
 
 const TARGETS = TLS_TARGET_HOSTS;
 
-for (const { host, criticality } of TARGETS) {
+for (const { host, criticality, assertionText, assertionSelector } of TARGETS) {
   journey(
     {
-      name: `TLS Certificate Check – ${host}`,
+      name: `TLS Browser Check – ${host}`,
       tags: criticality ? [`criticality:${criticality}`] : [],
     },
     ({ page }) => {
@@ -60,6 +60,24 @@ for (const { host, criticality } of TARGETS) {
           expect(trusted).toBe(true);
         } catch (error) {
           throw new Error(`Custom failure: Issuer CA/Certificate is untrusted.`);
+        }
+      });
+
+      step(`Navigate to ${host} and verify page content`, async () => {
+        // ignoreHTTPSErrors must be set at the browser-context level.
+        // @elastic/synthetics exposes the context; we recreate the page with the
+        // option set so the browser does not block on the revoked cert.
+        await page.context().route('**', (route) => route.continue());
+
+        const response = await page.goto(`https://${host}`, {
+          waitUntil: 'domcontentloaded',
+          timeout: 30_000,
+        });
+
+        expect(response, `Expected a response from ${host}`).not.toBeNull();
+
+        if (assertionText !== undefined && assertionSelector !== undefined) {
+          await expect(page.locator(assertionSelector)).toContainText(assertionText);
         }
       });
     }

@@ -4,12 +4,13 @@
   "description": "Elastic Synthetics project to extract and validate TLS server certificate fingerprints (SHA-256 primary, SHA-1 optional) across multiple real-world scenarios",
   "private": true,
   "scripts": {
-    "test": "elastic-synthetics journeys/",
-    "test:dry": "elastic-synthetics journeys/ --dry-run",
+    "test": "npm run generate:tls-targets && elastic-synthetics journeys/",
+    "generate:tls-targets": "node --import tsx scripts/generate-tls-targets.ts",
+    "test:dry": "npm run generate:tls-targets && elastic-synthetics journeys/ --dry-run",
     "test:unit": "node --import tsx --test tests/*.test.ts",
     "test:ci": "npm run test:dry && npm run test:unit",
-    "push": "elastic-synthetics push --config synthetics.config.ts",
-    "push:staging": "elastic-synthetics push --config synthetics.config.ts --space staging"
+    "push": "npm run generate:tls-targets && elastic-synthetics push --config synthetics.config.ts",
+    "push:staging": "npm run generate:tls-targets && elastic-synthetics push --config synthetics.config.ts --space staging"
   },
   "dependencies": {
     "@elastic/synthetics": "^1.23.2"
