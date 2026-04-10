@@ -34,6 +34,8 @@
 
 import * as tls from 'tls';
 import * as crypto from 'crypto';
+import * as http from 'http';
+import * as https from 'https';
 
 /** Structured certificate information returned by `fetchCertInfo`. */
 export interface CertInfo {
@@ -93,7 +95,7 @@ export function fetchLeafCertDer(
   port: number,
   options: TlsFetchOptions = {}
 ): Promise<Buffer> {
-  const { ca, timeoutMs = 10_000 } = options;
+  const { ca, timeoutMs = 5_000 } = options;
 
   return new Promise((resolve, reject) => {
     const socket = tls.connect(
@@ -148,7 +150,7 @@ export async function fetchCertInfo(
   port: number,
   options: TlsFetchOptions = {}
 ): Promise<CertInfo> {
-  const { ca, timeoutMs = 10_000 } = options;
+  const { ca, timeoutMs = 5_000 } = options;
 
   return new Promise((resolve, reject) => {
     const socket = tls.connect(
@@ -244,6 +246,194 @@ export function checkCertTrusted(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CRL-based revocation checking
+//
+// Note: Let's Encrypt discontinued OCSP support in mid-2025.  Certificates
+// from LE (including revoked.badssl.com) now use CRL Distribution Points
+// exclusively for revocation information.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Result of a CRL revocation check.
+ * - `'revoked'`  – serial number found in the CRL
+ * - `'good'`     – serial number NOT in the CRL
+ * - `'unknown'`  – no CRL URL found in the certificate
+ * - `'error'`    – network or parse failure during the check
+ */
+export type RevocationStatus = 'good' | 'revoked' | 'unknown' | 'error';
+
+/** Read the ASN.1 DER TLV at `at`, returning the tag, value slice, and end offset. */
+function readTlv(buf: Buffer, at: number): { tag: number; value: Buffer; end: number } {
+  const tag = buf[at];
+  let pos = at + 1;
+  const lb = buf[pos++];
+  let len: number;
+  if (lb < 0x80) {
+    len = lb;
+  } else {
+    const n = lb & 0x7f;
+    len = 0;
+    for (let i = 0; i < n; i++) len = (len << 8) | buf[pos++];
+  }
+  return { tag, value: buf.subarray(pos, pos + len), end: pos + len };
+}
+
+/**
+ * Extract the first CRL distribution point URI from a DER-encoded certificate.
+ *
+ * Searches for OID 2.5.29.31 (id-ce-cRLDistributionPoints) then scans forward
+ * for the first GeneralName URI entry (tag 0x86) within the extension value.
+ */
+function extractCrlUrl(certDer: Buffer): string | undefined {
+  // OID 2.5.29.31 = 06 03 55 1d 1f
+  const CRL_DP_OID = Buffer.from([0x06, 0x03, 0x55, 0x1d, 0x1f]);
+  const oidStart = certDer.indexOf(CRL_DP_OID);
+  if (oidStart < 0) return undefined;
+
+  // Scan up to 200 bytes past the OID for a GeneralName URI tag (0x86).
+  // URI entries in a CRL DP extension use tag [6] IMPLICIT IA5String = 0x86.
+  const limit = Math.min(oidStart + 200, certDer.length - 2);
+  for (let i = oidStart + CRL_DP_OID.length; i < limit; i++) {
+    if (certDer[i] === 0x86) {
+      const uriLen = certDer[i + 1];
+      if (uriLen < 0x80 && i + 2 + uriLen <= certDer.length) {
+        const url = certDer.subarray(i + 2, i + 2 + uriLen).toString('utf8');
+        if (url.startsWith('http://') || url.startsWith('https://')) return url;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Download a CRL (DER-encoded) from an HTTP or HTTPS URL. */
+function fetchCrl(url: string, timeoutMs: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const get = url.startsWith('https:') ? https.get.bind(https) : http.get.bind(http);
+    const req = get(url, (res: http.IncomingMessage) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new Error(`CRL fetch returned HTTP ${res.statusCode ?? 'unknown'}`));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+      res.on('error', reject);
+    });
+    req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error('CRL fetch timed out')); });
+    req.on('error', reject);
+  });
+}
+
+/**
+ * Walk the revokedCertificates list of a DER-encoded CRL and check whether
+ * `serialHex` appears.  Both sides are normalised to uppercase hex with
+ * leading zeros stripped so DER sign-byte padding does not cause a mismatch.
+ */
+function checkSerialInCrl(crlDer: Buffer, serialHex: string): 'revoked' | 'good' {
+  const normalize = (h: string) => h.replace(/^0+/, '').toUpperCase() || '0';
+  const target = normalize(serialHex);
+
+  try {
+    // CertificateList SEQUENCE → TBSCertList SEQUENCE
+    const certList = readTlv(crlDer, 0);
+    const tbsCertList = readTlv(certList.value, 0);
+    let pos = 0;
+
+    // version INTEGER OPTIONAL (tag 0x02, value 0x01 for v2) — bare INTEGER,
+    // NOT context-wrapped like TBSCertificate version.  Skip if present.
+    if (tbsCertList.value[pos] === 0x02) pos = readTlv(tbsCertList.value, pos).end;
+    // signature AlgorithmIdentifier (0x30)
+    pos = readTlv(tbsCertList.value, pos).end;
+    // issuer Name (0x30)
+    pos = readTlv(tbsCertList.value, pos).end;
+    // thisUpdate (UTCTime 0x17 or GeneralizedTime 0x18)
+    pos = readTlv(tbsCertList.value, pos).end;
+    // nextUpdate (optional UTCTime or GeneralizedTime)
+    if (tbsCertList.value[pos] === 0x17 || tbsCertList.value[pos] === 0x18) {
+      pos = readTlv(tbsCertList.value, pos).end;
+    }
+    // revokedCertificates SEQUENCE OF SEQUENCE (optional, tag 0x30)
+    if (pos >= tbsCertList.value.length || tbsCertList.value[pos] !== 0x30) {
+      return 'good'; // empty revocation list
+    }
+
+    const revokedSeq = readTlv(tbsCertList.value, pos);
+    let rpos = 0;
+    while (rpos < revokedSeq.value.length) {
+      const entry = readTlv(revokedSeq.value, rpos);
+      // Each entry: SEQUENCE { serialNumber INTEGER, revocationDate, ... }
+      const serial = readTlv(entry.value, 0);
+      if (serial.tag === 0x02) {
+        if (normalize(serial.value.toString('hex')) === target) return 'revoked';
+      }
+      rpos = entry.end;
+    }
+  } catch {
+    // Treat parse errors conservatively — do not report false revocations.
+    return 'good';
+  }
+  return 'good';
+}
+
+/**
+ * Check certificate revocation status by downloading and parsing the CRL.
+ *
+ * Opens a TLS connection to extract the CRL Distribution Point URL from the
+ * leaf certificate, fetches the CRL over HTTP, and checks whether the cert's
+ * serial number appears in the revoked list.
+ *
+ * Note: OCSP is no longer available for Let's Encrypt certificates (LE shut
+ * down OCSP responders in mid-2025).  This function uses CRL checking, which
+ * is the mechanism LE now relies on for revocation information.
+ */
+export async function checkCrlRevocation(
+  host: string,
+  port: number,
+  options: TlsFetchOptions = {}
+): Promise<RevocationStatus> {
+  const { ca, timeoutMs = 10_000 } = options;
+
+  try {
+    const { certDer, serialNumber } = await new Promise<{ certDer: Buffer; serialNumber: string }>(
+      (resolve, reject) => {
+        const socket = tls.connect(
+          {
+            host,
+            port,
+            servername: host,
+            rejectUnauthorized: false, // lgtm[js/disabling-certificate-validation]
+            ...(ca !== undefined ? { ca } : {}),
+          },
+          () => {
+            const cert = socket.getPeerCertificate(false);
+            socket.destroy();
+            if (!cert?.raw) {
+              reject(new Error(`No certificate from ${host}:${port}`));
+              return;
+            }
+            resolve({ certDer: cert.raw, serialNumber: cert.serialNumber ?? '' });
+          }
+        );
+        socket.on('error', (err) => { socket.destroy(); reject(err); });
+        socket.setTimeout(timeoutMs, () => {
+          socket.destroy();
+          reject(new Error(`TLS connection to ${host}:${port} timed out`));
+        });
+      }
+    );
+
+    const crlUrl = extractCrlUrl(certDer);
+    if (!crlUrl) return 'unknown';
+
+    const crlDer = await fetchCrl(crlUrl, timeoutMs);
+    return checkSerialInCrl(crlDer, serialNumber);
+  } catch {
+    return 'error';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Pure utility functions (easily unit-testable)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -264,27 +454,17 @@ export function computeFingerprint(
 }
 
 /**
- * Format a continuous hex string as colon-separated byte pairs.
- * Example: `"AABBCC"` → `"AA:BB:CC"`
- */
-export function colonSeparated(hex: string): string {
-  if (!hex || hex.length % 2 !== 0) {
-    throw new Error(`colonSeparated: cannot split odd-length hex string "${hex}"`);
-  }
-  return hex.match(/.{2}/g)!.join(':');
-}
-
-/**
- * Log certificate information in a consistent format.
+ * Log certificate information as two JSON blocks matching the Elastic
+ * `tls.server.x509` / `tls.server.hash` field layout.
  * Used by all journeys so output is easy to read and compare.
  */
 export function logCertInfo(host: string, port: number, cert: CertInfo): void {
-  console.log(`\n  ── TLS Certificate: ${host}:${port} ──`);
-  console.log(`  Subject  : ${cert.subject}`);
-  console.log(`  Issuer   : ${cert.issuer}`);
-  console.log(`  Valid    : ${cert.validFrom.toISOString()} → ${cert.validTo.toISOString()}`);
-  if (cert.sha1) {
-    console.log(`  SHA-1    : ${cert.sha1}`);
-  }
-  console.log(`  SHA-256  : ${cert.sha256}`);
+  const hashBlock: Record<string, string> = { sha256: cert.sha256 };
+  if (cert.sha1) hashBlock['sha1'] = cert.sha1;
+  console.log(`TLS_CERT,` +
+    JSON.stringify({ x509: { not_after: cert.validTo.toISOString(), not_before: cert.validFrom.toISOString(), subject: { common_name: cert.subject }, issuer: { common_name: cert.issuer }, }, })
+    + `,` + 
+    `TLS_HASH,` +
+    JSON.stringify({ hash: hashBlock })
+  );
 }

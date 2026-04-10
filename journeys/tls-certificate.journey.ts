@@ -21,29 +21,39 @@
  */
 
 import { journey, step, expect } from '@elastic/synthetics';
-import { fetchCertInfo, logCertInfo } from '../helpers/tls';
+import { fetchCertInfo, logCertInfo, CertInfo } from '../helpers/tls';
 
 const TARGET_HOST = process.env['TLS_TARGET_HOST'] ?? 'example.com';
 const TARGET_PORT = parseInt(process.env['TLS_TARGET_PORT'] ?? '443', 10);
 
-journey('TLS Certificate Hash – Generic Host', ({ page: _page, params }) => {
+journey('TLS Certificate Hash – Generic Host', ({ page, params }) => {
   // Allow the target host/port to be overridden via Elastic monitor params.
   const host: string = (params['host'] as string | undefined) ?? TARGET_HOST;
   const port: number =
     typeof params['port'] === 'number' ? (params['port'] as number) : TARGET_PORT;
 
-  step(`Extract TLS certificate fingerprints from ${host}:${port}`, async () => {
-    const cert = await fetchCertInfo(host, port);
+  // Shared across steps so the second step reuses the result of the first
+  // TLS handshake instead of opening a second connection.
+  let cachedCert: CertInfo | undefined;
 
-    logCertInfo(host, port, cert);
+  step(`Extract TLS certificate fingerprints from ${host}:${port}`, async () => {
+    // Configure telemetry to report hostnames in place of about:blank
+    await page.route('**/*', route => route.fulfill({ status: 200, body: 'TLS check context' }));
+    await page.goto(`https://${host}`, { waitUntil: 'commit' });
+
+    cachedCert = await fetchCertInfo(host, port);
+
+    logCertInfo(host, port, cachedCert);
 
     // Assert well-formed SHA-256 (32 bytes → 32 colon-separated pairs).
     // SHA-256 is the primary fingerprint; it is pre-computed by OpenSSL.
-    expect(cert.sha256).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
+    expect(cachedCert.sha256).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
   });
 
   step('Verify certificate is not expired', async () => {
-    const cert = await fetchCertInfo(host, port);
+    // Reuse the cert fetched in the previous step; fall back to a fresh
+    // connection only if the first step failed before populating cachedCert.
+    const cert = cachedCert ?? await fetchCertInfo(host, port);
     const now = new Date();
 
     expect(
@@ -52,4 +62,5 @@ journey('TLS Certificate Hash – Generic Host', ({ page: _page, params }) => {
     ).toBeGreaterThan(now.getTime());
   });
 });
+
 
