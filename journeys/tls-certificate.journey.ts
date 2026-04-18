@@ -26,7 +26,7 @@ import { fetchCertInfo, logCertInfo, CertInfo } from '../helpers/tls';
 const TARGET_HOST = process.env['TLS_TARGET_HOST'] ?? 'example.com';
 const TARGET_PORT = parseInt(process.env['TLS_TARGET_PORT'] ?? '443', 10);
 
-journey('TLS Certificate Hash – Generic Host', ({ page, params }) => {
+journey('TLS Certificate Hash - Generic Host', ({ page, params }) => {
   // Allow the target host/port to be overridden via Elastic monitor params.
   const host: string = (params['host'] as string | undefined) ?? TARGET_HOST;
   const port: number =

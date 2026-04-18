@@ -41,7 +41,7 @@ import { fetchCertInfo, checkCertTrusted, logCertInfo, CertInfo } from '../helpe
 const TARGET_HOST = 'self-signed.badssl.com';
 const TARGET_PORT = 443;
 
-journey('Self-Signed / Internal CA – TLS Extraction', ({ page }) => {
+journey('SelfSigned CA', ({ page }) => {
   // Shared across steps so step 3 reuses the cert fetched in step 2
   // instead of opening a third TLS connection.
   let cachedCert: CertInfo | undefined;

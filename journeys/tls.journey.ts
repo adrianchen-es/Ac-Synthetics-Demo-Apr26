@@ -21,7 +21,7 @@ const TARGETS = TLS_TARGET_HOSTS;
 for (const { host, criticality } of TARGETS) {
   journey(
     {
-      name: `TLS Certificate Check – ${host}`,
+      name: `TLS Certificate Check - ${host}`,
       tags: criticality ? [`criticality:${criticality}`] : [],
     },
     ({ page }) => {

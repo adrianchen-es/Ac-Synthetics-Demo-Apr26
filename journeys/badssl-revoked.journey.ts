@@ -34,7 +34,7 @@ const TARGET_HOST = 'revoked.badssl.com';
 const TARGET_PORT = 443;
 const TARGET_URL = `https://${TARGET_HOST}/`;
 
-journey('badssl.com Revoked Certificate – Browser + TLS Hash', ({ page }) => {
+journey('badssl.com Revoked Certificate - Browser', ({ page }) => {
   step('Navigate to revoked.badssl.com and verify page content', async () => {
     // ignoreHTTPSErrors must be set at the browser-context level.
     // @elastic/synthetics exposes the context; we recreate the page with the
