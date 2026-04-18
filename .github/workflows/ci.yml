@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   validate:
-    name: Type-check, dry-run & unit tests
+    name: Type-check, dry-run, journey names & unit tests
     runs-on: ubuntu-latest
 
     steps:
@@ -32,10 +32,6 @@ jobs:
       - name: TypeScript type-check
         run: npx tsc --noEmit
 
-      # ── Journeys (no network needed) ────────────────────────────────────────
-      - name: Validate journey structure (dry-run)
-        run: npm run test:dry
-
-      # ── Unit tests (no network needed) ──────────────────────────────────────
-      - name: Run unit tests
-        run: npm run test:unit
+      # ── Journeys (no network needed): dry-run, ASCII monitor names, unit tests ─
+      - name: CI checks (dry-run + journey names + unit tests)
+        run: npm run test:ci

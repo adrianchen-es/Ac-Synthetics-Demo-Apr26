@@ -16,12 +16,14 @@
  *   TLS_TARGET_HOST   Hostname to inspect (default: example.com)
  *   TLS_TARGET_PORT   Port to connect on  (default: 443)
  *
- * Push this monitor to Elastic with:
+ * Push this monitor group to Elastic with:
+ *   npm run push:tls
+ * Or deploy everything:
  *   npm run push
  */
 
 import { journey, step, expect } from '@elastic/synthetics';
-import { fetchCertInfo, logCertInfo, CertInfo } from '../helpers/tls';
+import { fetchCertInfo, logCertInfo, CertInfo } from '../../helpers/tls';
 
 const TARGET_HOST = process.env['TLS_TARGET_HOST'] ?? 'example.com';
 const TARGET_PORT = parseInt(process.env['TLS_TARGET_PORT'] ?? '443', 10);
@@ -62,5 +64,4 @@ journey('TLS Certificate Hash - Generic Host', ({ page, params }) => {
     ).toBeGreaterThan(now.getTime());
   });
 });
-
 

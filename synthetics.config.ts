@@ -19,9 +19,9 @@ const config: SyntheticsConfig = {
      * For a certificate-hash check the payload is tiny, so 5-minute cadence
      * gives near-real-time visibility without excess load.
      */
-    schedule: 5,
+    schedule: 15,
     locations: ['us_east'],
-    privateLocations: ['pl-pki-sks-npr-shd3'],
+    privateLocations: ['my-sample-location'],
 
     /**
      * Alert the default rule when a monitor changes state (up → down / down → up).

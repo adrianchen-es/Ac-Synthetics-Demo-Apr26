@@ -6,15 +6,17 @@
  * place of `about:blank`.
  *
  * Targets come from helpers/tlsTargetHosts.generated.ts (run
- * `npm run generate:tls-targets` after editing journeys/tls-target-hosts.csv).
+ * `npm run generate:tls-targets` after editing journeys/tls/tls-target-hosts.csv).
  *
- * Push this monitor to Elastic with:
+ * Push this monitor group to Elastic with:
+ *   npm run push:tls
+ * Or deploy everything:
  *   npm run push
  */
 
 import { journey, step, expect } from '@elastic/synthetics';
-import { TLS_TARGET_HOSTS } from '../helpers/tlsTargetHosts.generated';
-import { fetchCertInfo, checkCertTrusted, logCertInfo } from '../helpers/tls';
+import { TLS_TARGET_HOSTS } from '../../helpers/tlsTargetHosts.generated';
+import { fetchCertInfo, checkCertTrusted, logCertInfo } from '../../helpers/tls';
 
 const TARGETS = TLS_TARGET_HOSTS;
 

@@ -14,17 +14,19 @@
  * The Kibana URL is configurable via the KIBANA_TARGET_URL environment
  * variable or the monitor `params.targetUrl` field in Elastic.
  *
- * Push this monitor to Elastic with:
+ * Push this monitor group to Elastic with:
+ *   npm run push:kibana
+ * Or deploy everything:
  *   npm run push
  */
 
 import { journey, step, expect } from '@elastic/synthetics';
-import { fetchCertInfo, logCertInfo } from '../helpers/tls';
+import { fetchCertInfo, logCertInfo } from '../../helpers/tls';
 
 const DEFAULT_KIBANA_URL =
   'https://ac-siem-hosted-a183da.kb.us-west2.gcp.elastic-cloud.com/';
 
-journey('Kibana Login', ({ page, params }) => {
+journey('Kibana Login - Multi-Step Browser + TLS Hash', ({ page, params }) => {
   const targetUrl: string =
     (params['targetUrl'] as string | undefined) ??
     process.env['KIBANA_TARGET_URL'] ??
