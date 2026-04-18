@@ -1,12 +1,11 @@
 /**
- * badssl.com Additional Links TLS Journey
+ * badssl.com Additional Links TLS Journey (browser + TLS hash)
  *
- * Extracts the SHA-256 fingerprint of various badssl target URLs
- * verifying that the TLS checks collect the hostname reported in
- * place of `about:blank`.
+ * Extracts the SHA-256 fingerprint of various target URLs and verifies
+ * TLS checks collect the hostname reported in place of `about:blank`.
  *
- * Targets come from helpers/tlsTargetHosts.generated.ts (run
- * `npm run generate:tls-targets` after editing journeys/tls/tls-target-hosts.csv).
+ * Targets come from helpers/tlsTargetHosts.tls-browser.generated.ts (run
+ * `npm run generate:tls-targets` after editing this folder's tls-target-hosts.csv).
  *
  * Push this monitor group to Elastic with:
  *   npm run push:tls
@@ -15,7 +14,7 @@
  */
 
 import { journey, step, expect } from '@elastic/synthetics';
-import { TLS_TARGET_HOSTS } from '../../helpers/tlsTargetHosts.generated';
+import { TLS_TARGET_HOSTS } from '../../helpers/tlsTargetHosts.tls-browser.generated';
 import { fetchCertInfo, checkCertTrusted, logCertInfo } from '../../helpers/tls';
 
 const TARGETS = TLS_TARGET_HOSTS;

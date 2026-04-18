@@ -5,6 +5,7 @@
  *
  * Usage: node --import tsx scripts/push-journeys.ts <group>
  * Groups: all | tls | demos | kibana
+ * `tls` matches journeys/tls and journeys/tls-browser (shared TLS monitor groups).
  */
 
 import { spawnSync } from 'node:child_process';
@@ -14,7 +15,7 @@ const group = process.argv[2] ?? 'all';
 
 const patterns: Record<string, string | null> = {
   all: null,
-  tls: '^journeys[\\\\/]tls[\\\\/].*\\.journey\\.(ts|js)$',
+  tls: '^journeys[\\\\/]tls(-browser)?[\\\\/].*\\.journey\\.(ts|js)$',
   demos: '^journeys[\\\\/]demos[\\\\/].*\\.journey\\.(ts|js)$',
   kibana: '^journeys[\\\\/]kibana[\\\\/].*\\.journey\\.(ts|js)$',
 };

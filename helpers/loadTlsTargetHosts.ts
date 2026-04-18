@@ -16,8 +16,8 @@ const ALLOWED: ReadonlySet<string> = new Set(['critical', 'high', 'medium', 'low
  * `criticality` may be empty. Optional assertion columns are only used when both
  * are non-empty in the browser journey. Lines starting with `#` and blank lines are ignored.
  *
- * Used by `npm run generate:tls-targets` to build `tlsTargetHosts.generated.ts`
- * (default source: `journeys/tls/tls-target-hosts.csv`, overridable via `TLS_TARGET_HOSTS_CSV`).
+ * Used by `npm run generate:tls-targets` to build `helpers/tlsTargetHosts.<slug>.generated.ts`
+ * for each localized `tls-target-hosts.csv` under `journeys/` (see `tlsTargetCsvDiscovery.ts`).
  * Journeys import that file so Elastic workers never read the CSV from disk.
  */
 export function parseTlsTargetHostsCsv(raw: string): TlsTargetHost[] {

@@ -15,11 +15,10 @@
  * Configure CSV paths (paths **relative to the project root**):
  *
  * - **`JOURNEY_NAME_ASCII_CSVS`** — comma-separated list; if set, this is the
- *   only source used by the ASCII checker (for multiple CSVs in different
- *   journey folders).
- * - Else **`TLS_TARGET_HOSTS_CSV`** — single path; same variable as
- *   `scripts/generate-tls-targets.ts` so one env lines up codegen and checks.
- * - Else **`journeys/tls/tls-target-hosts.csv`** (built-in default).
+ *   only source used by the ASCII checker.
+ * - Else **`TLS_TARGET_HOSTS_CSV`** — single path (optional override).
+ * - Else **every** localized `tls-target-hosts.csv` under `journeys/` (same discovery as
+ *   `npm run generate:tls-targets` via `helpers/tlsTargetCsvDiscovery.ts`).
  *
  * Configure journey directories (relative to project root):
  *
@@ -32,6 +31,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, normalize, relative } from 'node:path';
 import * as ts from 'typescript';
 import { parseTlsTargetHostsCsv } from './loadTlsTargetHosts';
+import { discoverTlsTargetHostCsvPathsRelativeToRoot } from './tlsTargetCsvDiscovery';
 
 export type JourneyNameViolation = {
   /** Path relative to project root */
@@ -86,9 +86,9 @@ function propertyNameText(name: ts.PropertyName): string | undefined {
  *
  * - `JOURNEY_NAME_ASCII_CSVS` — comma-separated relative paths (wins over all).
  * - Else `TLS_TARGET_HOSTS_CSV` — single relative path.
- * - Else `journeys/tls/tls-target-hosts.csv`.
+ * - Else all localized `tls-target-hosts.csv` files under `journeys/`.
  */
-export function defaultHostCsvPathsFromEnv(): string[] {
+export function defaultHostCsvPathsFromEnv(rootDir: string = process.cwd()): string[] {
   const multi = process.env['JOURNEY_NAME_ASCII_CSVS'];
   if (multi !== undefined && multi.trim() !== '') {
     return multi
@@ -100,7 +100,7 @@ export function defaultHostCsvPathsFromEnv(): string[] {
   if (single !== undefined && single.trim() !== '') {
     return [normalize(single.trim())];
   }
-  return [join('journeys', 'tls', 'tls-target-hosts.csv')];
+  return discoverTlsTargetHostCsvPathsRelativeToRoot(rootDir);
 }
 
 /**
@@ -120,10 +120,10 @@ export function defaultJourneyRootsFromEnv(): string[] {
   return ['journeys'];
 }
 
-export function defaultJourneyNameAsciiConfig(): JourneyNameAsciiConfig {
+export function defaultJourneyNameAsciiConfig(rootDir: string = process.cwd()): JourneyNameAsciiConfig {
   return {
     journeyRoots: defaultJourneyRootsFromEnv(),
-    hostCsvPaths: defaultHostCsvPathsFromEnv(),
+    hostCsvPaths: defaultHostCsvPathsFromEnv(rootDir),
   };
 }
 
@@ -386,14 +386,14 @@ function walkSourceFile(sf: ts.SourceFile, hostValues: readonly string[], relPat
  * 7-bit ASCII, plus TLS CSV hosts when used in `name: \`...${host}...\``.
  *
  * @param rootDir - Project root (defaults to `process.cwd()`).
- * @param config - Optional; merged with defaults from env via `defaultJourneyNameAsciiConfig()`
+ * @param config - Optional; merged with defaults from env via `defaultJourneyNameAsciiConfig(rootDir)`
  *   when properties are omitted. Pass `{ hostCsvPaths: [] }` to disable CSV/host checks.
  */
 export function collectJourneyNameViolations(
   rootDir: string = process.cwd(),
   config?: Partial<JourneyNameAsciiConfig>
 ): JourneyNameViolation[] {
-  const defaults = defaultJourneyNameAsciiConfig();
+  const defaults = defaultJourneyNameAsciiConfig(rootDir);
   const journeyRoots =
     config?.journeyRoots !== undefined ? config.journeyRoots : defaults.journeyRoots;
   const hostCsvPaths =

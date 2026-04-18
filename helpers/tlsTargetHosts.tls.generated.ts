@@ -2,7 +2,7 @@
  * Generated from journeys/tls/tls-target-hosts.csv — do not edit by hand.
  * Run: npm run generate:tls-targets
  *
- * Override source CSV with TLS_TARGET_HOSTS_CSV (path relative to repo root).
+ * One generated module per localized tls-target-hosts.csv under journeys/.
  */
 import type { TlsTargetHost } from './loadTlsTargetHosts';
 

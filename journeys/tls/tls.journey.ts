@@ -5,7 +5,7 @@
  * verifying that the TLS checks collect the hostname reported in
  * place of `about:blank`.
  *
- * Targets come from helpers/tlsTargetHosts.generated.ts (run
+ * Targets come from helpers/tlsTargetHosts.tls.generated.ts (run
  * `npm run generate:tls-targets` after editing journeys/tls/tls-target-hosts.csv).
  *
  * Push this monitor group to Elastic with:
@@ -15,7 +15,7 @@
  */
 
 import { journey, step, expect } from '@elastic/synthetics';
-import { TLS_TARGET_HOSTS } from '../../helpers/tlsTargetHosts.generated';
+import { TLS_TARGET_HOSTS } from '../../helpers/tlsTargetHosts.tls.generated';
 import { fetchCertInfo, checkCertTrusted, logCertInfo } from '../../helpers/tls';
 
 const TARGETS = TLS_TARGET_HOSTS;

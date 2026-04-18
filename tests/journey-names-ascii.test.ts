@@ -34,13 +34,17 @@ test('default: nested journeys/ and default TLS CSV produce no violations', () =
 });
 
 test('default config discovers journey files under nested directories', () => {
-  const cfg = defaultJourneyNameAsciiConfig();
+  const cfg = defaultJourneyNameAsciiConfig(root);
   assert.ok(cfg.journeyRoots.includes('journeys'), 'expected default root journeys/');
   const paths = listJourneySourcePaths(root, cfg.journeyRoots);
   const rel = paths.map((p) => p.slice(root.length + 1).split(/[/\\]/).join('/'));
   assert.ok(
     rel.some((r) => r === 'journeys/tls/tls.journey.ts'),
     `expected journeys/tls/tls.journey.ts in ${rel.join(', ')}`
+  );
+  assert.ok(
+    rel.some((r) => r === 'journeys/tls-browser/tls-browser.journey.ts'),
+    `expected journeys/tls-browser/tls-browser.journey.ts in listing`
   );
   assert.ok(
     rel.some((r) => r === 'journeys/demos/badssl-revoked.journey.ts'),
@@ -73,9 +77,17 @@ test('explicit hostCsvPaths matches generate:tls-targets default CSV', () => {
   );
 });
 
-test('bootstrap contract: partial config merges with explicit multi-CSV list shape', () => {
-  const cfg = defaultJourneyNameAsciiConfig();
+test('bootstrap contract: default discovers every localized tls-target-hosts.csv under journeys/', () => {
+  const cfg = defaultJourneyNameAsciiConfig(root);
   assert.ok(Array.isArray(cfg.journeyRoots));
   assert.ok(Array.isArray(cfg.hostCsvPaths));
-  assert.ok(cfg.hostCsvPaths.length >= 1, 'default should include at least one CSV path');
+  assert.ok(cfg.hostCsvPaths.length >= 2, 'expected tls + tls-browser localized CSVs');
+  assert.ok(
+    cfg.hostCsvPaths.some((p) => p.includes('/tls/tls-target-hosts.csv')),
+    `expected tls csv, got ${cfg.hostCsvPaths.join(', ')}`
+  );
+  assert.ok(
+    cfg.hostCsvPaths.some((p) => p.includes('tls-browser')),
+    `expected tls-browser csv, got ${cfg.hostCsvPaths.join(', ')}`
+  );
 });
