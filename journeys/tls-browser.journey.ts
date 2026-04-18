@@ -21,7 +21,7 @@ const TARGETS = TLS_TARGET_HOSTS;
 for (const { host, criticality, assertionText, assertionSelector } of TARGETS) {
   journey(
     {
-      name: `TLS Browser Check – ${host}`,
+      name: `TLS Browser Check - ${host}`,
       tags: criticality ? [`criticality:${criticality}`] : [],
     },
     ({ page }) => {

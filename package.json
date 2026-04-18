@@ -8,6 +8,7 @@
     "generate:tls-targets": "node --import tsx scripts/generate-tls-targets.ts",
     "test:dry": "npm run generate:tls-targets && elastic-synthetics journeys/ --dry-run",
     "test:unit": "node --import tsx --test tests/*.test.ts",
+    "check:journey-names": "node --import tsx scripts/check-journey-names-ascii.ts",
     "test:ci": "npm run test:dry && npm run test:unit",
     "push": "npm run generate:tls-targets && elastic-synthetics push --config synthetics.config.ts",
     "push:staging": "npm run generate:tls-targets && elastic-synthetics push --config synthetics.config.ts --space staging"

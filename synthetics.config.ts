@@ -21,7 +21,7 @@ const config: SyntheticsConfig = {
      */
     schedule: 5,
     locations: ['us_east'],
-    privateLocations: [],
+    privateLocations: ['pl-pki-sks-npr-shd3'],
 
     /**
      * Alert the default rule when a monitor changes state (up → down / down → up).

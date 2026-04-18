@@ -24,7 +24,7 @@ import { fetchCertInfo, logCertInfo } from '../helpers/tls';
 const DEFAULT_KIBANA_URL =
   'https://ac-siem-hosted-a183da.kb.us-west2.gcp.elastic-cloud.com/';
 
-journey('Kibana Login – Multi-Step Browser + TLS Hash', ({ page, params }) => {
+journey('Kibana Login', ({ page, params }) => {
   const targetUrl: string =
     (params['targetUrl'] as string | undefined) ??
     process.env['KIBANA_TARGET_URL'] ??
