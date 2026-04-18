@@ -1,6 +1,8 @@
 /**
- * Generated from journeys/tls-target-hosts.csv — do not edit by hand.
+ * Generated from journeys/tls/tls-target-hosts.csv — do not edit by hand.
  * Run: npm run generate:tls-targets
+ *
+ * One generated module per localized tls-target-hosts.csv under journeys/.
  */
 import type { TlsTargetHost } from './loadTlsTargetHosts';
 

@@ -23,18 +23,20 @@
  *   1. Navigate to https://revoked.badssl.com/ and verify page content.
  *   2. Extract TLS certificate fingerprints and log them.
  *
- * Push this monitor to Elastic with:
+ * Push this monitor group to Elastic with:
+ *   npm run push:demos
+ * Or deploy everything:
  *   npm run push
  */
 
 import { journey, step, expect } from '@elastic/synthetics';
-import { fetchCertInfo, checkCertTrusted, checkCrlRevocation, logCertInfo } from '../helpers/tls';
+import { fetchCertInfo, checkCertTrusted, checkCrlRevocation, logCertInfo } from '../../helpers/tls';
 
 const TARGET_HOST = 'revoked.badssl.com';
 const TARGET_PORT = 443;
 const TARGET_URL = `https://${TARGET_HOST}/`;
 
-journey('badssl.com Revoked Certificate - Browser', ({ page }) => {
+journey('badssl.com Revoked Certificate - Browser + TLS Hash', ({ page }) => {
   step('Navigate to revoked.badssl.com and verify page content', async () => {
     // ignoreHTTPSErrors must be set at the browser-context level.
     // @elastic/synthetics exposes the context; we recreate the page with the

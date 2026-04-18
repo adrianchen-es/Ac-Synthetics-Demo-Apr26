@@ -1,6 +1,6 @@
 # Ac-Synthetics-Demo-Apr26
 
-Elastic Synthetics project that extracts and validates TLS server certificate fingerprints (SHA-256 primary, SHA-1 optional), and combines browser page tests with TLS certificate inspection across several real-world scenarios. A shared CSV (`journeys/tls-target-hosts.csv`) drives multiple monitors for `tls.journey.ts` (TLS-focused step) and `tls-browser.journey.ts` (the same TLS step plus a real browser navigation and optional DOM check).
+Elastic Synthetics project that extracts and validates TLS server certificate fingerprints (SHA-256 primary, SHA-1 optional), and combines browser page tests with TLS certificate inspection across several real-world scenarios. Journeys live under **`journeys/`** in subfolders (`tls/`, `tls-browser/`, `demos/`, `kibana/`) so you can run or push **all monitors** or **one group** (see [Running locally](#running-locally) and [Pushing monitors to Elastic](#pushing-monitors-to-elastic)). Localized **`tls-target-hosts.csv`** files drive CSV-expanded monitors: **`journeys/tls/`** for `tls.journey.ts` and **`journeys/tls-browser/`** for `tls-browser.journey.ts` (browser step plus optional DOM check; can include additional hosts such as `cloud.elastic.co`).
 
 [![CI](https://github.com/adrianchen-es/Ac-Synthetics-Demo-Apr26/actions/workflows/ci.yml/badge.svg)](https://github.com/adrianchen-es/Ac-Synthetics-Demo-Apr26/actions/workflows/ci.yml)
 
@@ -10,12 +10,14 @@ Elastic Synthetics project that extracts and validates TLS server certificate fi
 
 | Journey file | Type | Target | Description |
 |---|---|---|---|
-| `journeys/tls-certificate.journey.ts` | TLS-only | Configurable (default: `example.com`) | Generic host TLS hash extraction — no browser, minimal overhead |
-| `journeys/tls.journey.ts` | Playwright + TLS | Hosts from `tls-target-hosts.csv` | One step per host: route-stubbed `goto` for URL telemetry, then SHA-256, expiry, and OS trust assertions |
-| `journeys/tls-browser.journey.ts` | Playwright + TLS | Same CSV as `tls.journey.ts` | Step 1 matches `tls.journey.ts`; step 2 loads the real page (cert errors tolerated via context routing) with an optional `assertionText` / `assertionSelector` check |
-| `journeys/badssl-revoked.journey.ts` | Browser + TLS | `revoked.badssl.com` | Single-page browser test + SHA-256 fingerprint for a revoked certificate |
-| `journeys/kibana-login.journey.ts` | Browser + TLS | Elastic Cloud Kibana | Multi-step login flow + SHA-256 fingerprint |
-| `journeys/self-signed-ca.journey.ts` | TLS-only | `self-signed.badssl.com` | Demonstrates CA trust failure and fingerprint extraction regardless |
+| `journeys/tls/tls-certificate.journey.ts` | TLS-only | Configurable (default: `example.com`) | Generic host TLS hash extraction — no browser, minimal overhead |
+| `journeys/tls/tls.journey.ts` | Playwright + TLS | Hosts from `journeys/tls/tls-target-hosts.csv` | One step per host: route-stubbed `goto` for URL telemetry, then SHA-256, expiry, and OS trust assertions |
+| `journeys/tls-browser/tls-browser.journey.ts` | Playwright + TLS | `journeys/tls-browser/tls-target-hosts.csv` | Step 1 matches the TLS step in `tls.journey.ts`; step 2 loads the real page (cert errors tolerated via context routing) with an optional `assertionText` / `assertionSelector` check |
+| `journeys/demos/badssl-revoked.journey.ts` | Browser + TLS | `revoked.badssl.com` | Single-page browser test + SHA-256 fingerprint for a revoked certificate |
+| `journeys/kibana/kibana-login.journey.ts` | Browser + TLS | Elastic Cloud Kibana | Multi-step login flow + SHA-256 fingerprint |
+| `journeys/demos/self-signed-ca.journey.ts` | TLS-only | `self-signed.badssl.com` | Demonstrates CA trust failure and fingerprint extraction regardless |
+
+See **`journeys/README.md`** for a short folder map and command cheat sheet.
 
 All TLS extraction uses the Node.js built-in `tls` module — the SHA-256 fingerprint is read directly from `cert.fingerprint256`, a value pre-computed by OpenSSL during the TLS handshake at zero extra cost. No browser is launched for the certificate inspection steps.
 
@@ -23,7 +25,7 @@ All TLS extraction uses the Node.js built-in `tls` module — the SHA-256 finger
 
 ## How it works
 
-### TLS-only journey (`tls-certificate.journey.ts`)
+### TLS-only journey (`journeys/tls/tls-certificate.journey.ts`)
 
 * Opens a raw TLS socket to the target host
 * Reads the SHA-256 fingerprint from `cert.fingerprint256` (pre-computed by OpenSSL — no extra hashing step)
@@ -31,14 +33,14 @@ All TLS extraction uses the Node.js built-in `tls` module — the SHA-256 finger
 * Asserts the certificate has not expired
 * No browser launched → typically completes in < 200 ms
 
-### badssl.com Revoked Certificate journey (`badssl-revoked.journey.ts`)
+### badssl.com Revoked Certificate journey (`journeys/demos/badssl-revoked.journey.ts`)
 
 * **Step 1 – Browser:** navigates to `https://revoked.badssl.com/` and checks the page title
 * **Step 2 – TLS:** extracts the SHA-256 fingerprint and checks whether the OS trust store detects the revocation
 
 > Chromium uses soft-fail OCSP checking in headless mode, so the browser page loads despite the revocation. The `ignoreHTTPSErrors: true` Playwright option is set in `synthetics.config.ts` to confirm this is intentional for these demo journeys.
 
-### Kibana Login journey (`kibana-login.journey.ts`)
+### Kibana Login journey (`journeys/kibana/kibana-login.journey.ts`)
 
 * **Step 1 – Browser:** navigates to the Kibana URL, verifies the login page is shown
 * **Step 2 – Browser:** clicks the "Log in with Elasticsearch" button
@@ -47,7 +49,7 @@ All TLS extraction uses the Node.js built-in `tls` module — the SHA-256 finger
 
 The target Kibana URL defaults to `https://ac-siem-hosted-a183da.kb.us-west2.gcp.elastic-cloud.com/` but can be overridden via `KIBANA_TARGET_URL` or the monitor `params.targetUrl` field.
 
-### Self-Signed / Internal CA journey (`self-signed-ca.journey.ts`)
+### Self-Signed / Internal CA journey (`journeys/demos/self-signed-ca.journey.ts`)
 
 * **Step 1 – TLS:** confirms the connection is **rejected** when no custom CA is loaded (correct security behaviour)
 * **Step 2 – TLS:** extracts the SHA-256 fingerprint with `rejectUnauthorized: false` (always succeeds regardless of CA trust)
@@ -55,17 +57,19 @@ The target Kibana URL defaults to `https://ac-siem-hosted-a183da.kb.us-west2.gcp
 
 To trust an internal CA, pass its PEM to `fetchCertInfo(host, port, { ca })` — see `helpers/tls.ts` for details.
 
-### CSV-driven TLS journeys (`tls.journey.ts` and `tls-browser.journey.ts`)
+### CSV-driven TLS journeys (`journeys/tls/tls.journey.ts` and `journeys/tls-browser/tls-browser.journey.ts`)
 
-**Source of truth:** edit **`journeys/tls-target-hosts.csv`**. The script **`npm run generate:tls-targets`** (also run automatically before `npm test`, `npm run test:dry`, and `npm run push`) reads that CSV via **`helpers/loadTlsTargetHosts.ts`** (`parseTlsTargetHostsCsv`) and writes **`helpers/tlsTargetHosts.generated.ts`**. The journeys import `TLS_TARGET_HOSTS` from that generated file, so monitors uploaded to Elastic never call `fs.readFile` for the CSV — the worker bundle only needs the generated TypeScript.
+**Source of truth:** edit the **`tls-target-hosts.csv`** next to each group (`journeys/tls/`, `journeys/tls-browser/`, etc.). The script **`npm run generate:tls-targets`** (also run automatically before `npm test`, `npm run test:dry`, and `npm run push`) discovers every localized **`tls-target-hosts.csv`** under **`journeys/`**, parses via **`helpers/loadTlsTargetHosts.ts`**, and writes **`helpers/tlsTargetHosts.<slug>.generated.ts`** per CSV (see **`helpers/tlsTargetCsvDiscovery.ts`**). Each journey imports `TLS_TARGET_HOSTS` from its matching generated module, so Elastic workers never read CSV from disk.
 
-Commit **`tlsTargetHosts.generated.ts`** alongside CSV changes so clones and reviews stay in sync; `push` still regenerates it before upload so the archive is never stale.
+Commit the generated **`tlsTargetHosts.*.generated.ts`** files alongside CSV changes so clones stay in sync; `push` still regenerates them before upload.
+
+To add a new TLS group, create **`journeys/<name>/tls-target-hosts.csv`** and import from **`helpers/tlsTargetHosts.<slug>.generated.ts`** where `<slug>` is the path under `journeys/` with `/` replaced by `.` (for example `journeys/my-scope/` → `tlsTargetHosts.my-scope.generated.ts`).
 
 | Column | Required | Description |
 |--------|----------|-------------|
 | `host` | Yes | Hostname to test (HTTPS on port 443). A row may be host-only with no comma, or `host,` with an empty second field. |
 | `criticality` | No | One of `critical`, `high`, `medium`, `low`. When set, the journey gets a tag `criticality:<value>` for filtering in Kibana. When empty or omitted, no criticality tag is added. |
-| `assertionText` | No | Used only by **`tls-browser.journey.ts`** step 2. |
+| `assertionText` | No | Used only by **`journeys/tls-browser/tls-browser.journey.ts`** step 2. |
 | `assertionSelector` | No | CSS selector for the element that should contain `assertionText`. |
 
 Optional assertions run **only when both** `assertionText` and `assertionSelector` are non-empty; otherwise step 2 only checks that navigation returns a response.
@@ -170,7 +174,12 @@ npm run test:ci
 # Run all journeys (requires network access)
 npm test
 
-# After editing journeys/tls-target-hosts.csv — refreshes helpers/tlsTargetHosts.generated.ts (also runs automatically before npm test, test:dry, and push)
+# Run only one folder (network required)
+npm run test:tls
+npm run test:demos
+npm run test:kibana
+
+# After editing any journeys/**/tls-target-hosts.csv — refreshes helpers/tlsTargetHosts.*.generated.ts (also runs automatically before npm test, test:dry, and push)
 npm run generate:tls-targets
 
 # Override the target host for the TLS-only journey
@@ -194,6 +203,11 @@ npm run test:ci
 
 # Run all journeys (requires network access)
 npm test
+
+# Run only one folder
+npm run test:tls
+npm run test:demos
+npm run test:kibana
 
 # Override the target host for the TLS-only journey
 $env:TLS_TARGET_HOST="myserver.example.com"; $env:TLS_TARGET_PORT="8443"; npm test
@@ -249,12 +263,21 @@ set SYNTHETICS_API_KEY=<your-kibana-api-key>
 ### Step 2 — Push monitors
 
 ```bash
-# Push to the default Kibana space
+# Push every journey under journeys/ (all folders)
 npm run push
 
-# Push to a named space (e.g. staging)
+# Push only one folder (same project id as full push; see note below)
+npm run push:tls
+npm run push:demos
+npm run push:kibana
+
+# Push to a named space (e.g. staging) — entire project under journeys/
 npm run push:staging
 ```
+
+`push` and `push:*` run **`npm run generate:tls-targets`** first so **`helpers/tlsTargetHosts.*.generated.ts`** matches each **`tls-target-hosts.csv`** under **`journeys/`** before upload.
+
+Folder-scoped pushes use **`elastic-synthetics push --pattern …`** (see `scripts/push-journeys.ts`): only `*.journey.ts` files whose path matches `journeys/<folder>/...` are bundled. Monitors are still grouped under the same **`project.id`** from **`synthetics.config.ts`**. Pushing a subset updates or creates those monitors only; it does not remove monitors that were previously pushed from other folders (remove those in Kibana or run a deliberate project cleanup if you need that).
 
 ### CI/CD — inline credentials
 
@@ -273,18 +296,27 @@ KIBANA_URL="https://..." SYNTHETICS_API_KEY="..." npm run push
 │       └── ci.yml                          # GitHub Actions CI workflow
 ├── helpers/
 │   ├── loadTlsTargetHosts.ts               # CSV parser (build-time only)
-│   ├── tlsTargetHosts.generated.ts         # Generated from tls-target-hosts.csv — do not edit
+│   ├── tlsTargetCsvDiscovery.ts            # Finds localized tls-target-hosts.csv under journeys/
+│   ├── tlsTargetHosts.tls.generated.ts     # Generated from journeys/tls/tls-target-hosts.csv — do not edit
+│   ├── tlsTargetHosts.tls-browser.generated.ts
 │   └── tls.ts                              # Shared TLS utility functions
 ├── scripts/
-│   └── generate-tls-targets.ts             # Writes tlsTargetHosts.generated.ts
+│   ├── generate-tls-targets.ts             # One generated module per localized tls-target-hosts.csv
+│   └── push-journeys.ts                    # push helper: all | tls | demos | kibana
 ├── journeys/
-│   ├── tls-target-hosts.csv                # Host list for tls.journey + tls-browser.journey
-│   ├── tls-certificate.journey.ts          # TLS-only, configurable host
-│   ├── tls.journey.ts                      # Per-row TLS monitor from CSV
-│   ├── tls-browser.journey.ts              # Per-row TLS + browser monitor from CSV
-│   ├── badssl-revoked.journey.ts           # Browser + TLS, revoked cert demo
-│   ├── kibana-login.journey.ts             # Multi-step browser + TLS (Kibana)
-│   └── self-signed-ca.journey.ts           # Self-signed / internal CA demo
+│   ├── README.md                           # Folder map and quick commands
+│   ├── tls/
+│   │   ├── tls-target-hosts.csv            # Host list for tls.journey
+│   │   ├── tls-certificate.journey.ts      # TLS-only, configurable host
+│   │   └── tls.journey.ts                  # Per-row TLS monitor from CSV
+│   ├── tls-browser/
+│   │   ├── tls-target-hosts.csv            # Host list for tls-browser (can include extra hosts)
+│   │   └── tls-browser.journey.ts          # Per-row TLS + browser monitor from CSV
+│   ├── demos/
+│   │   ├── badssl-revoked.journey.ts       # Browser + TLS, revoked cert demo
+│   │   └── self-signed-ca.journey.ts       # Self-signed / internal CA demo
+│   └── kibana/
+│       └── kibana-login.journey.ts         # Multi-step browser + TLS (Kibana)
 ├── tests/
 │   └── tls-helpers.test.ts                 # Unit tests for helper functions
 ├── synthetics.config.ts                    # Elastic Synthetics project config
@@ -331,7 +363,7 @@ Per-journey environment variables:
 | `TLS_TARGET_PORT` | `tls-certificate` | `443` | Port to connect on |
 | `KIBANA_TARGET_URL` | `kibana-login` | *(Elastic Cloud demo)* | Kibana URL to test |
 
-**`tls.journey.ts` and `tls-browser.journey.ts`** do not use the variables above; at **runtime** (including on Elastic) they use **`helpers/tlsTargetHosts.generated.ts`**, which is produced from **`journeys/tls-target-hosts.csv`** when you run **`npm run generate:tls-targets`** or any script that invokes it (see **`package.json`**).
+**`journeys/tls/tls.journey.ts`** and **`journeys/tls-browser/tls-browser.journey.ts`** do not use the variables above; at **runtime** (including on Elastic) they import **`TLS_TARGET_HOSTS`** from **`helpers/tlsTargetHosts.tls.generated.ts`** and **`helpers/tlsTargetHosts.tls-browser.generated.ts`**, produced by **`npm run generate:tls-targets`** (see **`package.json`**).
 
 ---
 

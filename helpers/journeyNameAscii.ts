@@ -4,12 +4,34 @@
  * Kibana monitor creation can fail when names contain non-ASCII punctuation
  * (for example U+2013 EN DASH "–" instead of U+002D HYPHEN-MINUS "-").
  * This module walks journey sources and ensures names are 7-bit ASCII only.
+ *
+ * ## Layout and CSV sources
+ *
+ * - Journey files are discovered **recursively** under each configured root
+ *   (default: `journeys/`).
+ * - Hostnames used to expand `` `...${host}...` `` in monitor names come from
+ *   one or more CSV files (same schema as `parseTlsTargetHostsCsv`).
+ *
+ * Configure CSV paths (paths **relative to the project root**):
+ *
+ * - **`JOURNEY_NAME_ASCII_CSVS`** — comma-separated list; if set, this is the
+ *   only source used by the ASCII checker.
+ * - Else **`TLS_TARGET_HOSTS_CSV`** — single path (optional override).
+ * - Else **every** localized `tls-target-hosts.csv` under `journeys/` (same discovery as
+ *   `npm run generate:tls-targets` via `helpers/tlsTargetCsvDiscovery.ts`).
+ *
+ * Configure journey directories (relative to project root):
+ *
+ * - **`JOURNEY_NAME_ASCII_ROOTS`** — comma-separated list; if set, only these
+ *   trees are scanned (e.g. `journeys/tls,journeys/demos`). If unset, default is
+ *   `journeys`.
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, normalize, relative } from 'node:path';
 import * as ts from 'typescript';
 import { parseTlsTargetHostsCsv } from './loadTlsTargetHosts';
+import { discoverTlsTargetHostCsvPathsRelativeToRoot } from './tlsTargetCsvDiscovery';
 
 export type JourneyNameViolation = {
   /** Path relative to project root */
@@ -19,6 +41,21 @@ export type JourneyNameViolation = {
   message: string;
   /** Short excerpt for debugging */
   fragment: string;
+};
+
+/** Resolved options for `collectJourneyNameViolations`. */
+export type JourneyNameAsciiConfig = {
+  /**
+   * Directories under `rootDir` to scan recursively for `*.journey.ts`.
+   * Paths are relative to `rootDir` (e.g. `journeys`, `journeys/tls`).
+   */
+  journeyRoots: string[];
+  /**
+   * CSV files (relative to `rootDir`) whose `host` column is merged for
+   * `${host}` template expansion and validated for ASCII. Use `[]` to skip CSV
+   * checks (journeys that only use static monitor names).
+   */
+  hostCsvPaths: string[];
 };
 
 function firstNonAsciiIssue(s: string): string | null {
@@ -43,10 +80,136 @@ function propertyNameText(name: ts.PropertyName): string | undefined {
   return undefined;
 }
 
-function readTlsHosts(root: string): readonly string[] {
-  const csvPath = join(root, 'journeys', 'tls-target-hosts.csv');
-  const raw = readFileSync(csvPath, 'utf8');
-  return parseTlsTargetHostsCsv(raw).map((r) => r.host);
+/**
+ * Default CSV paths for host expansion: same precedence as `generate:tls-targets`
+ * plus optional multi-CSV list for additional journey folders.
+ *
+ * - `JOURNEY_NAME_ASCII_CSVS` — comma-separated relative paths (wins over all).
+ * - Else `TLS_TARGET_HOSTS_CSV` — single relative path.
+ * - Else all localized `tls-target-hosts.csv` files under `journeys/`.
+ */
+export function defaultHostCsvPathsFromEnv(rootDir: string = process.cwd()): string[] {
+  const multi = process.env['JOURNEY_NAME_ASCII_CSVS'];
+  if (multi !== undefined && multi.trim() !== '') {
+    return multi
+      .split(',')
+      .map((s) => normalize(s.trim()))
+      .filter((s) => s.length > 0);
+  }
+  const single = process.env['TLS_TARGET_HOSTS_CSV'];
+  if (single !== undefined && single.trim() !== '') {
+    return [normalize(single.trim())];
+  }
+  return discoverTlsTargetHostCsvPathsRelativeToRoot(rootDir);
+}
+
+/**
+ * Default journey scan roots under `rootDir`.
+ *
+ * - `JOURNEY_NAME_ASCII_ROOTS` — comma-separated (e.g. `journeys/tls,journeys/demos`).
+ * - Else `journeys`.
+ */
+export function defaultJourneyRootsFromEnv(): string[] {
+  const raw = process.env['JOURNEY_NAME_ASCII_ROOTS'];
+  if (raw !== undefined && raw.trim() !== '') {
+    return raw
+      .split(',')
+      .map((s) => normalize(s.trim()))
+      .filter((s) => s.length > 0);
+  }
+  return ['journeys'];
+}
+
+export function defaultJourneyNameAsciiConfig(rootDir: string = process.cwd()): JourneyNameAsciiConfig {
+  return {
+    journeyRoots: defaultJourneyRootsFromEnv(),
+    hostCsvPaths: defaultHostCsvPathsFromEnv(rootDir),
+  };
+}
+
+function readHostsFromCsvs(rootDir: string, csvRelPaths: string[]): {
+  mergedHosts: string[];
+  violations: JourneyNameViolation[];
+} {
+  const violations: JourneyNameViolation[] = [];
+  const mergedHosts: string[] = [];
+
+  for (const rel of csvRelPaths) {
+    const abs = join(rootDir, rel);
+    if (!existsSync(abs)) {
+      violations.push({
+        file: rel,
+        line: 0,
+        column: 0,
+        message: `CSV not found (needed for host column validation and \${host} expansion): ${rel}`,
+        fragment: rel,
+      });
+      continue;
+    }
+    const raw = readFileSync(abs, 'utf8');
+    const rows = parseTlsTargetHostsCsv(raw);
+    for (const row of rows) {
+      mergedHosts.push(row.host);
+      const issue = firstNonAsciiIssue(row.host);
+      if (issue) {
+        violations.push({
+          file: rel,
+          line: 0,
+          column: 0,
+          message: `TLS target host contains ${issue} (used in dynamic journey names)`,
+          fragment: row.host,
+        });
+      }
+    }
+  }
+
+  return { mergedHosts, violations };
+}
+
+/**
+ * Lists every `*.journey.ts` file under each root (recursive).
+ * Exported for tests and tooling.
+ */
+export function listJourneySourcePaths(rootDir: string, journeyRoots: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  const walk = (dir: string) => {
+    let names: string[];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      const p = join(dir, name);
+      let st;
+      try {
+        st = statSync(p);
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) {
+        walk(p);
+      } else if (name.endsWith('.journey.ts')) {
+        const abs = p;
+        if (!seen.has(abs)) {
+          seen.add(abs);
+          out.push(abs);
+        }
+      }
+    }
+  };
+
+  for (const rel of journeyRoots) {
+    const base = join(rootDir, rel);
+    if (!existsSync(base)) {
+      continue;
+    }
+    walk(base);
+  }
+
+  return out;
 }
 
 function expandTemplateMonitorNames(
@@ -218,35 +381,30 @@ function walkSourceFile(sf: ts.SourceFile, hostValues: readonly string[], relPat
   return out;
 }
 
-function listJourneySourcePaths(journeysDir: string): string[] {
-  return readdirSync(journeysDir)
-    .filter((name) => name.endsWith('.journey.ts'))
-    .map((name) => join(journeysDir, name));
-}
-
 /**
  * Returns violations for any `journey()` monitor name that is not entirely
  * 7-bit ASCII, plus TLS CSV hosts when used in `name: \`...${host}...\``.
+ *
+ * @param rootDir - Project root (defaults to `process.cwd()`).
+ * @param config - Optional; merged with defaults from env via `defaultJourneyNameAsciiConfig(rootDir)`
+ *   when properties are omitted. Pass `{ hostCsvPaths: [] }` to disable CSV/host checks.
  */
-export function collectJourneyNameViolations(rootDir: string = process.cwd()): JourneyNameViolation[] {
-  const journeysDir = join(rootDir, 'journeys');
-  const hostValues = readTlsHosts(rootDir);
-  const violations: JourneyNameViolation[] = [];
+export function collectJourneyNameViolations(
+  rootDir: string = process.cwd(),
+  config?: Partial<JourneyNameAsciiConfig>
+): JourneyNameViolation[] {
+  const defaults = defaultJourneyNameAsciiConfig(rootDir);
+  const journeyRoots =
+    config?.journeyRoots !== undefined ? config.journeyRoots : defaults.journeyRoots;
+  const hostCsvPaths =
+    config?.hostCsvPaths !== undefined ? config.hostCsvPaths : defaults.hostCsvPaths;
 
-  for (const host of hostValues) {
-    const issue = firstNonAsciiIssue(host);
-    if (issue) {
-      violations.push({
-        file: relative(rootDir, join(rootDir, 'journeys', 'tls-target-hosts.csv')),
-        line: 0,
-        column: 0,
-        message: `TLS target host contains ${issue} (used in dynamic journey names)`,
-        fragment: host,
-      });
-    }
-  }
+  const { mergedHosts, violations: csvViolations } = readHostsFromCsvs(rootDir, hostCsvPaths);
+  const violations: JourneyNameViolation[] = [...csvViolations];
 
-  for (const absPath of listJourneySourcePaths(journeysDir)) {
+  const hostValues = mergedHosts;
+
+  for (const absPath of listJourneySourcePaths(rootDir, journeyRoots)) {
     const text = readFileSync(absPath, 'utf8');
     const sf = ts.createSourceFile(absPath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const rel = relative(rootDir, absPath);

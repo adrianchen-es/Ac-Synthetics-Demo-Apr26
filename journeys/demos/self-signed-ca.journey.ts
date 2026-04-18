@@ -31,17 +31,19 @@
  *   2. Extract fingerprints regardless using rejectUnauthorized: false.
  *   3. Verify the certificate is not expired (expiry is independent of trust).
  *
- * Push this monitor to Elastic with:
+ * Push this monitor group to Elastic with:
+ *   npm run push:demos
+ * Or deploy everything:
  *   npm run push
  */
 
 import { journey, step, expect } from '@elastic/synthetics';
-import { fetchCertInfo, checkCertTrusted, logCertInfo, CertInfo } from '../helpers/tls';
+import { fetchCertInfo, checkCertTrusted, logCertInfo, CertInfo } from '../../helpers/tls';
 
 const TARGET_HOST = 'self-signed.badssl.com';
 const TARGET_PORT = 443;
 
-journey('SelfSigned CA', ({ page }) => {
+journey('Self-Signed / Internal CA - TLS Extraction', ({ page }) => {
   // Shared across steps so step 3 reuses the cert fetched in step 2
   // instead of opening a third TLS connection.
   let cachedCert: CertInfo | undefined;
