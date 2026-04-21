@@ -1,6 +1,6 @@
 # Ac-Synthetics-Demo-Apr26
 
-Elastic Synthetics project that extracts and validates TLS server certificate fingerprints (SHA-256 primary, SHA-1 optional), and combines browser page tests with TLS certificate inspection across several real-world scenarios. Journeys live under **`journeys/`** in subfolders (`tls/`, `tls-browser/`, `demos/`, `kibana/`) so you can run or push **all monitors** or **one group** (see [Running locally](#running-locally) and [Pushing monitors to Elastic](#pushing-monitors-to-elastic)). Localized **`tls-target-hosts.csv`** files drive CSV-expanded monitors: **`journeys/tls/`** for `tls.journey.ts` and **`journeys/tls-browser/`** for `tls-browser.journey.ts` (browser step plus optional DOM check; can include additional hosts such as `cloud.elastic.co`).
+Elastic Synthetics project that extracts and validates TLS server certificate fingerprints (SHA-256 primary, SHA-1 optional), and combines browser page tests with TLS certificate inspection across several real-world scenarios. Optional cluster-side ingest (**`docs/ingest-pipeline-synthetics-browser.json`**) maps structured **`TLS_CERT` / `TLS_HASH`** stdout from journeys into **`tls.server.*`** so the Kibana **TLS** UI populates for browser monitors ([details](#kibana-tls-ui-and-synthetics-browsercustom-ingest-pipeline)). Journeys live under **`journeys/`** in subfolders (`tls/`, `tls-browser/`, `demos/`, `kibana/`) so you can run or push **all monitors** or **one group** (see [Running locally](#running-locally) and [Pushing monitors to Elastic](#pushing-monitors-to-elastic)). Localized **`tls-target-hosts.csv`** files drive CSV-expanded monitors: **`journeys/tls/`** for `tls.journey.ts` and **`journeys/tls-browser/`** for `tls-browser.journey.ts` (browser step plus optional DOM check; can include additional hosts such as `cloud.elastic.co`).
 
 [![CI](https://github.com/adrianchen-es/Ac-Synthetics-Demo-Apr26/actions/workflows/ci.yml/badge.svg)](https://github.com/adrianchen-es/Ac-Synthetics-Demo-Apr26/actions/workflows/ci.yml)
 
@@ -294,6 +294,10 @@ KIBANA_URL="https://..." SYNTHETICS_API_KEY="..." npm run push
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                          # GitHub Actions CI workflow
+├── docs/
+│   ├── ingest-pipeline-synthetics-browser.json  # PUT as _ingest/pipeline/synthetics-browser@custom
+│   └── images/
+│       └── tls_ui_with_browser_synthetics.png   # Kibana TLS UI (after pipeline + new data)
 ├── helpers/
 │   ├── loadTlsTargetHosts.ts               # CSV parser (build-time only)
 │   ├── tlsTargetCsvDiscovery.ts            # Finds localized tls-target-hosts.csv under journeys/
@@ -374,3 +378,40 @@ Per-journey environment variables:
 * SHA-256 (`cert.fingerprint256`) is the primary fingerprint. SHA-1 (`cert.fingerprint`) is available as an optional field but should not be used as a sole trust anchor.
 * API keys are excluded from version control via `.gitignore`.
 * `package-lock.json` **is** committed to enable reproducible `npm ci` installs in CI.
+
+---
+
+## Kibana TLS UI and synthetics-browser@custom ingest pipeline
+
+Hybrid and browser journeys call **`logCertInfo()`** in **`helpers/tls.ts`**, which prints one **stdout** line per TLS check in this shape: `TLS_CERT,<json>,TLS_HASH,<json>`. The JSON blocks mirror the **`tls.server.x509`** and **`tls.server.hash`** field layout. Elastic Synthetics stores that line on the document under **`synthetics.payload.message`** (type **`stdout`**).
+
+Without further processing, that text does **not** populate the **`tls.server.*`** fields that drive the **TLS** summary in Observability, so the TLS card can appear empty even when the journey succeeded.
+
+This repo ships an ingest pipeline definition named **`synthetics-browser@custom`**, the hook Elasticsearch uses for **custom processing on browser synthetics** data. The pipeline:
+
+- Matches **`stdout`** messages that start with **`TLS_CERT`** and contain **`TLS_HASH`**
+- **Dissect** + **json** processors copy the embedded JSON into **`tls.server.x509`** and **`tls.server.hash`**
+- **gsub** strips colons from fingerprint hex so values match the UI’s expected form
+- Sets **`summary.final_attempt`** to **`true`** (boolean) when both certificate and hash are present
+
+**Pipeline definition (version in repo):** [`docs/ingest-pipeline-synthetics-browser.json`](docs/ingest-pipeline-synthetics-browser.json)
+
+### Install on your cluster
+
+Use **Kibana → Dev Tools** and run **`PUT _ingest/pipeline/synthetics-browser@custom`** with the JSON from that file, or from the repo root:
+
+```bash
+curl -X PUT \
+  -H "Content-Type: application/json" \
+  -u "elastic:$ELASTIC_PASSWORD" \
+  "https://YOUR_CLUSTER_HOST:9243/_ingest/pipeline/synthetics-browser%40custom" \
+  --data-binary @docs/ingest-pipeline-synthetics-browser.json
+```
+
+Encode **`@`** as **`%40`** in the URL. Adjust host, port, and auth to match your deployment (Elastic Cloud often uses port **9243** or **443** for Elasticsearch). 
+**Ensure you target your deployment's Elasticsearch endpoint.**
+
+After the pipeline is installed, **new** browser synthetic documents that include the **`TLS_CERT`** stdout line should show certificate details in the TLS UI, for example:
+
+![TLS summary populated from browser synthetics stdout via ingest pipeline](docs/images/tls_ui_with_browser_synthetics.png)
+
