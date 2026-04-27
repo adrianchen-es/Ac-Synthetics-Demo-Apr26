@@ -1,6 +1,8 @@
 # Local TLS lab: 1-day self-signed certs (Nginx / Apache)
 
-This folder is optional automation for simulating **short certificate lifetimes**, **expiry failure**, and **rotate / re-notify** flows before you point production monitors at real services.
+This folder is optional automation for simulating **short certificate lifetimes**, **expiry failure**, and **rotate / re-notify** flows. It lines up with the **Verify** step in the article’s *Automated Certificate Monitoring and Self-Healing* loop: re-issue, restart the web server, and re-run Synthetics to see a **new fingerprint** and a valid `not_after` (see also **`docs/elastic-samples/workflows/02-canary-certificate-impact-check.yaml`** for Osquery canary-style checks in-cluster).
+
+It is for lab use before you point production monitors at real services.
 
 Each issued certificate is **self-signed** and, by default, **valid for one calendar day** (see `DAYS` below). Nginx and Apache are wired as two **Docker Compose profiles** that share the same `certs/server.crt` and `certs/server.key` files.
 
