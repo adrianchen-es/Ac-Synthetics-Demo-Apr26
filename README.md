@@ -287,6 +287,14 @@ KIBANA_URL="https://..." SYNTHETICS_API_KEY="..." npm run push
 
 ---
 
+## Local lab: 1-day self-signed certs (Nginx / Apache)
+
+The **[`local-lab/`](local-lab/)** directory contains a small Docker-based setup that issues a **one-day** self‑signed key pair, serves it over **HTTPS** with **Nginx** or **Apache** (separate Compose profiles, host ports **8443** and **8444**), and documents how to run **`journeys/tls/tls-certificate.journey.ts`** with `TLS_TARGET_HOST` and `TLS_TARGET_PORT` to simulate **expiry failure**, **renew** (re-issue + container restart and new fingerprint), and **Kibana** notification patterns. See **[`local-lab/README.md`](local-lab/README.md)** for step-by-step use.
+
+The CSV-based TLS monitors (`tls.journey.ts` / `tls-browser.journey.ts`) target port **443** and assert public trust, so the generic **`tls-certificate.journey.ts`** is the one intended for this self-signed lab.
+
+---
+
 ## Project structure
 
 ```
@@ -294,6 +302,11 @@ KIBANA_URL="https://..." SYNTHETICS_API_KEY="..." npm run push
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                          # GitHub Actions CI workflow
+├── local-lab/                              # Optional: 1-day self-signed certs, Nginx/Apache (see local-lab/README.md)
+│   ├── docker-compose.yml
+│   ├── scripts/                          # gen-tls-certs.sh, renew-tls-certs.sh
+│   ├── nginx/ · apache/
+│   └── README.md
 ├── docs/
 │   ├── ingest-pipeline-synthetics-browser.json  # PUT as _ingest/pipeline/synthetics-browser@custom
 │   └── images/
